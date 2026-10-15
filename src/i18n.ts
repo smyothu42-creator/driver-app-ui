@@ -1,0 +1,138 @@
+/**
+ * #25 App in Spanish (scope note B: one file with every English and Spanish line for SFK to check).
+ *
+ * The English text is the key, so screens read naturally: t("Start navigation").
+ * A line missing here falls back to English. In the real build this becomes the
+ * reviewed translation file; the prototype covers the main driver path.
+ */
+export type Lang = "en" | "es";
+
+const ES: Record<string, string> = {
+  // Tabs
+  Home: "Inicio",
+  Map: "Mapa",
+  Schedule: "Agenda",
+  History: "Historial",
+  Me: "Yo",
+  // Duty + ready
+  "On duty": "En servicio",
+  "Off duty": "Fuera de servicio",
+  "Sharing location": "Compartiendo ubicación",
+  "Location not shared": "Ubicación no compartida",
+  Ready: "Disponible",
+  "Not ready": "No disponible",
+  "Turn on Ready": "Activar Disponible",
+  "Turn on Ready to see your next step and today's stops.": "Activa Disponible para ver tu siguiente paso y las paradas de hoy.",
+  "On duty · location shared": "En servicio · ubicación compartida",
+  "Off duty · location off": "Fuera de servicio · ubicación apagada",
+  "stops done": "paradas hechas",
+  "Collect reusables": "Recoger reutilizables",
+  "Reusables pickup": "Recogida de reutilizables",
+  "Your route is ready": "Tu ruta está lista",
+  "Go on duty to see your stops.": "Entra en servicio para ver tus paradas.",
+  "Go on duty": "Entrar en servicio",
+  "Go on duty to see your next step and today's stops.": "Entra en servicio para ver tu siguiente paso y las paradas de hoy.",
+  Details: "Detalles",
+  // Today
+  "Your next step": "Tu siguiente paso",
+  Route: "Ruta",
+  "Kitchen pickup": "Recogida en cocina",
+  "Today's route": "Ruta de hoy",
+  "Back to the kitchen": "De vuelta a la cocina",
+  "Arrive in": "Llegas en",
+  "Where to deliver": "Dónde entregar",
+  "Start setup": "Empezar montaje",
+  "See entrance photo": "Ver foto de la entrada",
+  "Photo": "Foto",
+  "Get in": "Entrar",
+  "Setup instructions": "Instrucciones de montaje",
+  "Setup": "Montaje",
+  "Delivery instructions": "Instrucciones de entrega",
+  "Operations": "Operaciones",
+  "Kitchen": "Cocina",
+  "Something wrong? Report a problem": "¿Algo salió mal? Reportar un problema",
+  "SFK Team": "Equipo SFK",
+  "Customer": "Cliente",
+  "Delivery": "Entrega",
+  "You're here · do these in order": "Ya llegaste · hazlo en orden",
+  "When": "Cuándo",
+  "Location shared with Dispatch": "Ubicación compartida con Despacho",
+  "All stops done": "Todas las paradas hechas",
+  "Where to go": "Adónde ir",
+  "How to deliver": "Cómo entregar",
+  "Deliver within": "Entrega en menos de",
+  "Window passed": "Ventana vencida",
+  "Pick up at the kitchen": "Recoge en la cocina",
+  "Scan packing slip": "Escanear albarán",
+  "Start navigation": "Iniciar navegación",
+  "Resume navigation": "Reanudar navegación",
+  "Take delivery photo": "Tomar foto de entrega",
+  "Back to kitchen to load": "Volver a cocina a cargar",
+  "Route complete": "Ruta completa",
+  "End duty": "Terminar servicio",
+  delivered: "entregados",
+  "Next: stop": "Siguiente: parada",
+  "requests need your answer": "solicitudes esperan tu respuesta",
+  "request needs your answer": "solicitud espera tu respuesta",
+  Cancelled: "Cancelado",
+  "New time": "Nueva hora",
+  // Stop
+  Call: "Llamar",
+  Dispatch: "Despacho",
+  Problem: "Problema",
+  Instructions: "Instrucciones",
+  Contacts: "Contactos",
+  "Site contact": "Contacto en sitio",
+  "Backup contact": "Contacto de respaldo",
+  Parking: "Estacionamiento",
+  Access: "Acceso",
+  "Back to route": "Volver a la ruta",
+  "Mark setup done": "Montaje terminado",
+  "End service": "Terminar servicio de mesa",
+  "Load at kitchen first": "Primero carga en la cocina",
+  "I've already arrived": "Ya llegué",
+  // Navigate
+  "Open Google Maps": "Abrir Google Maps",
+  "Slide when you arrive": "Desliza al llegar",
+  "I'm here": "Ya llegué",
+  "On time": "A tiempo",
+  "Running late": "Con retraso",
+  // Proof
+  "Proof of delivery": "Prueba de entrega",
+  "Slide to complete delivery": "Desliza para completar",
+  "Slide to complete anyway": "Desliza para completar de todos modos",
+  "Take a photo to finish": "Toma una foto para terminar",
+  "Who received it?": "¿Quién lo recibió?",
+  // Schedule
+  "Needs your answer": "Espera tu respuesta",
+  "Coming up": "Próximas",
+  "Your open hours": "Tu horario",
+  "Time off": "Días libres",
+  Accept: "Aceptar",
+  "Can't do it": "No puedo",
+  Accepted: "Aceptada",
+  Declined: "Rechazada",
+  Pending: "Pendiente",
+  // Inbox
+  Inbox: "Mensajes",
+  "Message dispatch": "Mensaje a despacho",
+  // Problem
+  "Report a problem": "Reportar un problema",
+  "Call dispatch now": "Llamar a despacho ahora",
+  Next: "Siguiente",
+  "Send to dispatch": "Enviar a despacho",
+  // Me
+  Vehicle: "Vehículo",
+  Language: "Idioma",
+  "Location sharing": "Compartir ubicación",
+  "Call dispatch": "Llamar a despacho",
+  "Ready for new requests": "Disponible para nuevas solicitudes",
+  // System
+  "Offline · saved on your phone": "Sin conexión · guardado en tu teléfono",
+  "will sync when signal is back": "se sincronizarán al volver la señal",
+  "Update now": "Actualizar ahora",
+};
+
+export function translate(lang: Lang, text: string) {
+  return lang === "es" ? (ES[text] ?? text) : text;
+}
