@@ -3,7 +3,7 @@ import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type Loca
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_ISO, SETTINGS, KITCHEN_READY, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
 import type { Availability } from "../data/availability";
-import { Badge, Button, Card, cn, IconChip, SectionLabel, SfkMark, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
+import { Badge, Button, Card, cn, IconChip, SectionLabel, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
 import { MapView, type Pin } from "../components/MapView";
 import { DeliveryScene } from "../components/Illustrations";
 
@@ -153,7 +153,7 @@ export function MapTab() {
             return st === "arrived" ? `At ${next.name}` : st === "en_route" ? `On the way to ${next.name}` : `Next: ${next.name}`;
           })()}
         </span>
-        <Badge tone={s.shiftOn ? "success" : "neutral"}>{s.shiftOn ? "Live" : "Off duty"}</Badge>
+        <StatusText tone={s.shiftOn ? "done" : "later"}>{s.shiftOn ? "Live" : "Off duty"}</StatusText>
       </div>
       {/* Swipe the cards down to hide them (more map); swipe the tab up (or tap it) to bring them back. */}
       <div
@@ -265,18 +265,6 @@ function StatusTag({ stop, next }: { stop: Stop; next: boolean }) {
   if (st === "en_route") return <StatusText tone="now">On the way</StatusText>;
   if (next) return <StatusText tone="now">Next</StatusText>;
   return <StatusText tone="later">Upcoming</StatusText>;
-}
-
-/** Status word with a small dot; colour backs up the word, never replaces it. */
-function StatusText({ tone, children }: { tone: "done" | "now" | "later" | "off"; children: ReactNode }) {
-  const c = { done: "text-success", now: "text-coral-deep", later: "text-muted-foreground", off: "text-danger" }[tone];
-  const dot = { done: "bg-success", now: "bg-coral", later: "bg-control/60", off: "bg-danger" }[tone];
-  return (
-    <span className={cn("flex shrink-0 items-center gap-1.5 text-[13px] font-semibold leading-[22px]", c)}>
-      <span className={cn("size-2 rounded-full", dot)} aria-hidden />
-      {children}
-    </span>
-  );
 }
 
 /* ---------------- History tab ----------------

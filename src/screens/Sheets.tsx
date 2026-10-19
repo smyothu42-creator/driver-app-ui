@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, Camera, Check, X, CheckCircle2, ChefHat, Navigation, BadgeCheck, Download, Headphones, MapPin, MessageSquare, Phone } from "lucide-react";
 import { findStop, isLoaded, liveRoute, needsKitchenRun, stopSteps, useApp, nextStop, useT } from "../store";
-import { DISPATCH, KITCHEN, SETTINGS, SFK_TEAM, fmtTime, fmtWindow, type Contact } from "../data/route";
+import { DISPATCH, KITCHEN, ROUTE_ISO, SETTINGS, SFK_TEAM, WEEKDAYS, fmtHours, fmtTime, fmtWindow, weekdayOf, type Contact } from "../data/route";
 import { Button, cn, IconChip, Sheet, StepTrack, SfkMark } from "../components/ui";
 import { ContactRow, StopInstructions } from "./StopDetail";
 import accessPhoto from "../assets/access-photo.jpg";
@@ -34,6 +34,8 @@ export function Sheets() {
       return <ClaimedSheet id={s.sheet.id} />;
     case "decline":
       return <DeclineSheet id={s.sheet.id} />;
+    case "openHours":
+      return <OpenHoursSheet />;
     case "language":
       return <LanguageSheet />;
     case "update":
@@ -365,7 +367,8 @@ function DeclineSheet({ id }: { id: string }) {
   const r = s.requests.find((x) => x.id === id)!;
   const [pick, setPick] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const ok = pick && (pick !== "Other" || note.trim().length >= 3);
+  // Agreed: declining needs a reason and a comment for dispatch.
+  const ok = !!pick && note.trim().length >= 3;
   return (
     <Sheet title="Why can't you take it?" onClose={a.closeSheet}>
       <p className="-mt-3 mb-4 text-[13px] text-muted-foreground">
@@ -385,18 +388,48 @@ function DeclineSheet({ id }: { id: string }) {
           </button>
         ))}
       </div>
-      {pick === "Other" && (
+      <label className="mt-4 block text-[13px] font-semibold text-muted-foreground">
+        Comment for dispatch
         <textarea
-          autoFocus
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          placeholder="A few words for dispatch"
-          className="mt-3 w-full rounded-xl border border-control bg-card px-4 py-3 text-base outline-none focus:border-teal focus:ring-2 focus:ring-teal/30"
+          placeholder={pick === "Other" ? "What's the reason?" : "e.g. I'm at the dentist until 1 PM"}
+          className="mt-1.5 w-full resize-none rounded-2xl border border-control bg-card px-4 py-3 text-base font-normal text-foreground outline-none focus:border-teal focus:ring-2 focus:ring-teal/30"
         />
-      )}
-      <Button size="lg" variant={ok ? "coral" : "outline"} className="mt-4 w-full" disabled={!ok} onClick={() => a.answerRequest(id, "declined", pick === "Other" ? note.trim() : pick!)}>
-        {ok ? "Send to dispatch" : pick === "Other" ? "Add a few words" : "Pick a reason"}
+      </label>
+      <Button size="lg" variant={ok ? "coral" : "outline"} className="mt-4 w-full" disabled={!ok} onClick={() => a.answerRequest(id, "declined", pick === "Other" ? note.trim() : `${pick} · ${note.trim()}`)}>
+        {ok ? "Send to dispatch" : !pick ? "Pick a reason" : "Add a comment"}
+      </Button>
+    </Sheet>
+  );
+}
+
+/** #16: the week's open hours. Read-only; one row per working day (off days left out), today marked. */
+function OpenHoursSheet() {
+  const { s, a } = useApp();
+  const todayIdx = weekdayOf(ROUTE_ISO);
+  return (
+    <Sheet title="Open hours" onClose={a.closeSheet}>
+      <p className="-mt-3 mb-3 text-[13px] text-muted-foreground">When dispatch can send you work. Set by dispatch.</p>
+      <ul className="divide-y divide-border">
+        {WEEKDAYS.map((day, i) => {
+          const h = s.openHours[i];
+          if (!h) return null;
+          const today = i === todayIdx;
+          return (
+            <li key={day} className={cn("nums flex h-12 items-center justify-between text-[16px]", today ? "font-semibold text-teal-deep" : "text-foreground")}>
+              <span>
+                {day}
+                {today && <span className="ml-2 rounded-full bg-teal-wash px-2 py-0.5 text-[12px] font-semibold text-teal-deep">Today</span>}
+              </span>
+              <span>{fmtHours(h)}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <Button size="lg" variant="outline" className="mt-4 w-full" onClick={a.closeSheet}>
+        Done
       </Button>
     </Sheet>
   );

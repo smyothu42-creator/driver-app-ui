@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BellRing, CloudOff, Download, X } from "lucide-react";
 import { useApp, useT } from "../store";
 import { SETTINGS } from "../data/route";
+import { isOn } from "../data/sprints";
 import { Button, cn } from "./ui";
 
 /* ------------------------------------------------------------------
@@ -19,21 +20,22 @@ export function PushBanner() {
     const t = window.setTimeout(a.dismissPush, 6000);
     return () => window.clearTimeout(t);
   }, [push, a.dismissPush]);
-  if (!push) return null;
+  // Notifications (inbox) is hidden for now, but request and reminder pushes still show with Schedule.
+  if (!push || !(isOn("notifications") || (push.schedule && isOn("schedule")))) return null;
+  // Same dark-green drop-in banner as the confirmations ("Time off requested"), plus a close button.
   return (
-    <div className="anim-fade absolute inset-x-2 top-1 z-[75]">
-      <div className={cn("flex items-start gap-3 rounded-2xl bg-card/95 p-3 shadow-raised backdrop-blur", push.tone === "high" && "ring-2 ring-coral")}>
-        <button onClick={a.openPush} className="flex min-w-0 flex-1 items-start gap-3 text-left">
-          <span className={cn("grid size-9 shrink-0 place-items-center rounded-xl", push.tone === "high" ? "bg-coral text-white" : "bg-teal-wash text-teal")}>
-            <BellRing className="size-[18px]" />
+    <div className="anim-drop absolute inset-x-2 top-1 z-[75] max-[500px]:top-[calc(env(safe-area-inset-top)+4px)]">
+      <div data-dark-surface className="flex items-center gap-3 rounded-[18px] bg-teal-deep py-2 pl-3.5 pr-1.5 text-white shadow-[0_10px_30px_rgba(0,64,69,0.28)]">
+        <button onClick={a.openPush} className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left">
+          <span className={cn("grid size-7 shrink-0 place-items-center rounded-full", push.tone === "high" ? "bg-coral" : "bg-white/15")}>
+            <BellRing className="size-4" />
           </span>
-          <span className="min-w-0">
-            <span className="block text-2xs font-semibold text-muted-foreground">SFK Driver · now</span>
-            <span className="block text-[15px] font-bold leading-snug">{push.title}</span>
-            <span className="block text-[13px] leading-snug text-muted-foreground">{push.body}</span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className="block truncate text-[15px] font-semibold">{push.title}</span>
+            {push.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{push.body}</span>}
           </span>
         </button>
-        <button onClick={a.dismissPush} aria-label="Dismiss" className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground">
+        <button onClick={a.dismissPush} aria-label="Dismiss" className="grid size-10 shrink-0 place-items-center rounded-full text-white/70 active:bg-white/10">
           <X className="size-4" />
         </button>
       </div>

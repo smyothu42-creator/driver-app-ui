@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { DEFAULT_VEHICLE_ID, DISPATCH, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_POOL, REQUESTS, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, type Assignment, type DeliveryRequest, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
+import { DEFAULT_VEHICLE_ID, DISPATCH, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_HOURS, OPEN_POOL, REQUESTS, workOf, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, type Assignment, type DeliveryRequest, type OpenDay, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
 import { translate, type Lang } from "./i18n";
 import { isOn } from "./data/sprints";
 import { coversWindow, dayOf, type Availability } from "./data/availability";
@@ -19,6 +19,7 @@ export type Screen =
   | { name: "package"; id: string } // #9 after a scan: check the items inside that package
   | { name: "problem"; id: string } // #21 step-by-step problem flow
   | { name: "request"; id: string } // #18 one delivery request
+  | { name: "requests" } // #18 only the requests waiting for an answer (Home's request button)
   | { name: "inbox" } // #6 messages to and from dispatch
   | { name: "vehicle" } // #64 vehicle profile
   | { name: "publicPage"; id: string } // #10 public delivery page opened from the slip QR
@@ -40,7 +41,8 @@ export type Sheet =
   | { name: "startShift" }
   | { name: "decline"; id: string } // #18 decline needs a reason
   | { name: "language" } // #25
-  | { name: "update" }; // #24
+  | { name: "update" } // #24
+  | { name: "openHours" }; // #16 the week, from the Schedule header
 
 export type Handoff = "handed" | "left";
 
@@ -87,6 +89,8 @@ export interface Msg {
   body?: string;
   stopId?: string;
   requestId?: string;
+  /** Where a message without a stop or request opens: the Schedule tab or the time-off screen. */
+  goto?: "schedule" | "availability";
   priority: "high" | "medium" | "low";
   read?: boolean;
 }
@@ -97,6 +101,8 @@ export interface Push {
   body: string;
   tone: "high" | "medium";
   open?: Screen;
+  /** A delivery request or a reminder about one: shown with Schedule, even while Notifications is hidden. */
+  schedule?: boolean;
 }
 
 export interface VehicleProfile {
@@ -144,6 +150,7 @@ export interface State {
   push: Push | null; // #15 the banner currently on screen
   inbox: Msg[]; // #6
   requests: DeliveryRequest[]; // #17–20
+  openHours: OpenDay[]; // #16 set by dispatch, Monday first
   changes: Record<string, TimeChange>; // #15 time changes from dispatch
   scanned: Record<string, boolean>; // #9 packing slips scanned at the kitchen
   awayFromAddress: boolean; // #13 prototype stand-in for GPS distance at the drop
@@ -192,6 +199,7 @@ const initial = (): State => ({
     { id: "m2", at: 9 * 60 + 40, from: "dispatch", kind: "reminder", title: "3 delivery requests need your answer", body: "Brightline Health is in less than 48 h.", requestId: "r2", priority: "high" },
   ],
   requests: REQUESTS,
+  openHours: OPEN_HOURS,
   changes: {},
   scanned: {},
   awayFromAddress: false,
@@ -244,6 +252,12 @@ function useAppState() {
     window.setTimeout(() => set((prev) => (prev.toast === msg ? { ...prev, toast: null } : prev)), 2600);
   }, []);
 
+  const popup = useCallback((title: string, body?: string) => {
+    const n = { title, body };
+    set((prev) => ({ ...prev, notice: n }));
+    window.setTimeout(() => set((prev) => (prev.notice === n ? { ...prev, notice: null } : prev)), 2400);
+  }, []);
+
   const actions = useMemo(
     () => ({
       push: (scr: Screen) =>
@@ -255,11 +269,7 @@ function useAppState() {
       closeSheet: () => patch({ sheet: null }),
       focus: (id: string) => patch({ focusId: id }),
       toast,
-      popup: (title: string, body?: string) => {
-        const n = { title, body };
-        set((prev) => ({ ...prev, notice: n }));
-        window.setTimeout(() => set((prev) => (prev.notice === n ? { ...prev, notice: null } : prev)), 2400);
-      },
+      popup,
 
       signIn: () => patch((p) => ({ signedIn: true, stack: p.permsDone ? [{ name: "tabs" }, ...(p.afterSignIn ? [p.afterSignIn] : [])] : [{ name: "permissions" }], afterSignIn: p.permsDone ? null : p.afterSignIn })),
       setPerm: (p: Partial<Pick<State, "location" | "camera" | "notifications">>) => patch(p),
@@ -351,7 +361,38 @@ function useAppState() {
           const availability = { ...p.availability };
           if (approve) availability[iso] = { status: "unavailable" };
           else delete availability[iso];
-          return { availability };
+          const day = new Date(iso + "T12:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+          const title = approve ? "Time off approved" : "Time off not approved";
+          const body = approve ? `${day} · dispatch won't send you work` : `${day} · you're still working. Call dispatch to talk it over.`;
+          return {
+            availability,
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "info", title, body, goto: "availability", priority: "medium" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: approve ? "medium" : "high", open: { name: "availability" } },
+          };
+        }),
+      /** #16: dispatch changes the driver's open hours; the phone gets a push and shows the new hours. */
+      setOpenHours: (openHours: OpenDay[]) =>
+        patch((p) => {
+          const title = "Your open hours changed";
+          const body = "Set by dispatch · see Schedule";
+          return {
+            openHours,
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "info", title, body, goto: "schedule", priority: "medium" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "medium", open: { name: "tabs" } },
+          };
+        }),
+      /** #18: the every-X-hours reminder for unanswered requests (dispatch can also send it now). */
+      remindRequests: () =>
+        patch((p) => {
+          const pending = p.requests.filter((r) => r.status === "pending");
+          if (!pending.length) return {};
+          const title = `${pending.length} ${pending.length === 1 ? "request needs" : "requests need"} your answer`;
+          const body = pending.map((r) => r.name).join(" · ");
+          return {
+            requests: p.requests.map((r) => (r.status === "pending" ? { ...r, remindedAt: p.clock } : r)),
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "reminder", title, body, goto: "schedule", priority: "high" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "tabs" }, schedule: true },
+          };
         }),
       // Keeps the role of anyone who stays selected, so removing one chip never clears the others' roles.
       setAssignees: (stopId: string, userIds: string[]) =>
@@ -422,10 +463,13 @@ function useAppState() {
               sheet: { name: "claimed", id: r.orderId },
               ...queued(p),
             };
-          return { ...p, sheet: null, requests, ...queued(p) };
+          // Back to the Schedule tab, where the answer shows straight away.
+          // Answered from the Requests list: stay there. Otherwise back to the Schedule tab.
+          const onList = p.stack.at(-1)?.name === "requests";
+          return { ...p, sheet: null, requests, ...(onList ? {} : { stack: [{ name: "tabs" }] as Screen[], tab: "schedule" as Tab }), ...queued(p) };
         });
-        // Same-day accepts show the "added to your route" sheet instead of a toast.
-        if (!(status === "accepted" && id.startsWith("q-"))) toast(status === "accepted" ? "Accepted · dispatch can see it" : "Declined · dispatch will reassign it");
+        // Same-day accepts show the "added to your route" sheet instead of a pop-up.
+        if (!(status === "accepted" && id.startsWith("q-"))) popup(status === "accepted" ? "Accepted" : "Sent to dispatch", status === "accepted" ? "Dispatch can see it" : "They'll reassign it");
       },
       /** Dispatch sends an unassigned order to a driver as a same-day request. */
       sendOrderRequest: (orderId: string) =>
@@ -433,14 +477,14 @@ function useAppState() {
           const o = OPEN_POOL.find((x) => x.id === orderId)!;
           const id = `q-${orderId}`;
           if (p.requests.some((r) => r.id === id)) return p;
-          const r: DeliveryRequest = { id, orderId, orderNo: o.orderNo, name: o.name, address: o.addressLine1, dateISO: ROUTE_ISO, dateLabel: "Today", time: o.windowStart, meals: o.meals, type: o.orderType, status: "pending", sentAt: `Today ${fmtTime(p.clock)}` };
+          const r: DeliveryRequest = { id, orderId, orderNo: o.orderNo, name: o.name, address: o.addressLine1, dateISO: ROUTE_ISO, dateLabel: "Today", time: o.windowStart, meals: o.meals, type: o.orderType, customerType: o.customerType, work: workOf(o), status: "pending", remindedAt: p.clock, sentAt: `Today ${fmtTime(p.clock)}` };
           const title = "New delivery for today";
           const body = `${o.name} · ${fmtWindow(o.windowStart, o.windowEnd)} · accept to add it to your route`;
           return {
             ...p,
             requests: [...p.requests, r],
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "request", title, body, requestId: id, priority: "high" }, ...p.inbox],
-            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id } },
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id }, schedule: true },
           };
         }),
       /** Stands in for another driver's phone accepting a request. */
@@ -537,14 +581,14 @@ function useAppState() {
       sendRequest: () =>
         set((p) => {
           if (p.requests.some((r) => r.id === "r6")) return p;
-          const r: DeliveryRequest = { id: "r6", orderNo: "ORD-3158", name: "Lumen Studio", address: "500 Terry A Francois Blvd", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 12 * 60 + 45, meals: 16, type: "Daily Lunch", status: "pending", sentAt: `Today ${fmtTime(p.clock)}` };
+          const r: DeliveryRequest = { id: "r6", orderNo: "ORD-3158", name: "Lumen Studio", address: "500 Terry A Francois Blvd", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 12 * 60 + 45, meals: 16, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "pending", sentAt: `Today ${fmtTime(p.clock)}`, remindedAt: p.clock };
           const title = "New delivery request";
           const body = `${r.name} · ${r.dateLabel} · ~${fmtTime(r.time)}`;
           return {
             ...p,
             requests: [...p.requests, r],
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "request", title, body, requestId: r.id, priority: "high" }, ...p.inbox],
-            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id: r.id } },
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id: r.id }, schedule: true },
           };
         }),
       /** #74: SFK office marks a stop for a driver without the app. */
@@ -556,7 +600,7 @@ function useAppState() {
       resetDemo: () => set(initial()),
       jump: (fn: (s: State) => Partial<State>) => patch(fn),
     }),
-    [patch, patchStop, toast],
+    [patch, patchStop, toast, popup],
   );
 
   return { s, a: actions };

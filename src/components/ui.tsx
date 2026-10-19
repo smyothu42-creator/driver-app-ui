@@ -88,6 +88,12 @@ export const STATUS_META: Record<StopStatus, { label: string; tone: Tone }> = {
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
 
+/** Status word as a soft pill (same look as the 48 h chip): tinted fill, coloured word, no border. */
+export function StatusText({ tone, children, className }: { tone: "done" | "now" | "wait" | "later" | "off"; children: ReactNode; className?: string }) {
+  const c = { done: "bg-success-bg text-success", now: "bg-coral-soft text-coral-deep", wait: "bg-yellow-wash text-[#7A6A00]", later: "bg-muted text-muted-foreground", off: "bg-danger-bg text-danger" }[tone];
+  return <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] font-semibold", c, className)}>{children}</span>;
+}
+
 /* ---------- Workflow step track ----------
  * The driver workflow (Claim → Pick up → Deliver → Confirm) as a simple full-width stepper: a circle
  * per step (check once done), joined by lines that stretch to fill the row and turn teal as steps
@@ -166,13 +172,15 @@ const WORK: Record<Work, { label: string; Icon: typeof Flame; cls: string; ink: 
  * Work type at a stop (hot / cold / reusables). `pill` (default) is the filled chip for detail screens;
  * `plain` is the quiet list version: coloured icon + grey word, no background.
  */
-export function WorkTags({ stop, className, variant = "pill", onDark, strong }: { stop: Stop; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean }) {
+export function WorkTags({ stop, work, className, variant = "pill", onDark, strong }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean }) {
+  // A request (Schedule) passes its work list directly; a stop derives it.
+  const list = work ?? (stop ? workOf(stop) : []);
   // On a dark (Superfine green) surface the icons use light tints so they keep contrast.
   const darkInk: Record<Work, string> = { hot: "text-[#F6A985]", cold: "text-[#9FD6D8]", reusables: "text-yellow" };
   if (variant === "plain")
     return (
       <span className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)} aria-label="Work at this stop">
-        {workOf(stop).map((w) => {
+        {list.map((w) => {
           const { label, Icon, ink } = WORK[w];
           return (
             <span key={w} className={cn("inline-flex items-center gap-1 text-[13px] font-medium", onDark ? "text-white/80" : strong ? "text-teal-deep" : "text-muted-foreground")}>
@@ -185,7 +193,7 @@ export function WorkTags({ stop, className, variant = "pill", onDark, strong }: 
     );
   return (
     <span className={cn("flex flex-wrap gap-1.5", className)} aria-label="Work at this stop">
-      {workOf(stop).map((w) => {
+      {list.map((w) => {
         const { label, Icon, cls } = WORK[w];
         return (
           <span key={w} className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2 text-2xs font-semibold", cls)}>
@@ -372,7 +380,7 @@ const AVATAR_TONES = [
   ["#FBF3D3", "#7A5A0E"],
   ["#E2F1F1", "#0F5E63"],
 ] as const;
-export function StopAvatar({ stop, className }: { stop: Stop; className?: string }) {
+export function StopAvatar({ stop, className }: { stop: Pick<Stop, "name" | "customerType" | "photo">; className?: string }) {
   const person = stop.customerType === "individual";
   const words = stop.name.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean);
   const initials = (person ? words.slice(0, 2).map((w) => w[0]) : words.length > 1 ? [words[0][0], words[1][0]] : [words[0][0], words[0][1]]).join("").toUpperCase();

@@ -48,8 +48,10 @@
 .anim-draw { stroke-dasharray: 24; animation: draw 300ms 180ms ease-out both; }
 .anim-ripple { animation: ripple 700ms 120ms ease-out both; }
 .anim-rise { animation: rise-in 260ms 160ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-12px) scale(.98); } to { opacity: 1; transform: none; } }
+.anim-drop { animation: drop-in 240ms cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .anim-sheet, .anim-fade, .anim-screen, .anim-pulse, .anim-dash, .anim-glow, .anim-scanline, .anim-pop, .anim-draw, .anim-ripple, .anim-rise { animation: none; }
+  .anim-sheet, .anim-fade, .anim-screen, .anim-pulse, .anim-dash, .anim-glow, .anim-scanline, .anim-pop, .anim-draw, .anim-ripple, .anim-rise, .anim-drop { animation: none; }
 }
 
 /* Real map (MapLibre): keep the attribution clear of floating cards, and use the app font for it. */

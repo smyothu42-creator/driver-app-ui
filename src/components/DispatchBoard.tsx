@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { isStaffAvailable, routeOf, useApp, vehicleOf } from "../store";
-import { DISPATCH, DRIVER, OPEN_POOL, ROUTE_DATE, ROUTE_ISO, SETTINGS, STAFF, STAFF_ROLES, VEHICLES, fmtTime, fmtWindow, type StaffMember, type StaffRole, type Stop } from "../data/route";
+import { DRIVER, OPEN_POOL, ROUTE_DATE, ROUTE_ISO, SETTINGS, STAFF, STAFF_ROLES, VEHICLES, WEEKDAYS, fmtTime, fmtWindow, type OpenDay, type StaffMember, type StaffRole, type Stop } from "../data/route";
 import { hoursUntil } from "../screens/Schedule";
+import { DEFAULT_HOURS, TIME_OPTIONS } from "../data/availability";
 import { Badge, cn, RoleBadge } from "./ui";
 
 /* ------------------------------------------------------------------
@@ -280,53 +281,40 @@ function RunSheet() {
 
 /* ---------------- Unassigned orders: dispatch sends them as requests (drivers don't browse) ---------------- */
 
-function UnassignedOrders() {
+export function UnassignedOrders() {
   const { s, a } = useApp();
   return (
     <section>
-      <div className="text-overline mb-2">Unassigned orders · today</div>
+      <SectionHead title="Unassigned today" />
       <div className="divide-y divide-border rounded-2xl border border-border">
         {OPEN_POOL.map((o) => {
           const accepted = s.claims[o.id];
           const req = s.requests.find((r) => r.orderId === o.id);
           const who = accepted && (accepted.by === DRIVER.id ? DRIVER.name : STAFF.find((m) => m.id === accepted.by)?.name);
           return (
-            <div key={o.id} className="space-y-2 px-4 py-3">
+            <div key={o.id} className="space-y-1 px-4 py-3">
               <div className="flex items-start gap-2">
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">
-                    {o.name} <span className="font-normal text-muted-foreground">· {o.orderNo}</span>
-                  </span>
+                  <span className="block text-sm font-semibold">{o.name}</span>
                   <span className="nums block text-2xs text-muted-foreground">{fmtWindow(o.windowStart, o.windowEnd)}</span>
                 </span>
                 {accepted ? (
-                  <Badge tone="success">Driver accepted · {who}</Badge>
+                  <Badge tone="success">Accepted · {who?.split(" ")[0]}</Badge>
                 ) : req?.status === "declined" ? (
-                  <Badge tone="danger">Driver declined</Badge>
+                  <Badge tone="danger">Declined</Badge>
                 ) : req ? (
-                  <Badge tone="warning">Driver pending</Badge>
+                  <Badge tone="warning">Pending</Badge>
                 ) : (
-                  <Badge tone="neutral">Unassigned</Badge>
-                )}
-              </div>
-              {!accepted && !req && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={() => a.sendOrderRequest(o.id)} className="h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white">
+                  <button onClick={() => a.sendOrderRequest(o.id)} className="h-8 shrink-0 rounded-full bg-teal px-3 text-[13px] font-semibold text-white">
                     Send to {DRIVER.first}
                   </button>
-                  <button onClick={() => a.acceptAs(o.id, "u-lena")} className="text-[13px] font-semibold text-teal underline-offset-2 hover:underline">
-                    Simulate: assign to Lena (accepted)
-                  </button>
-                </div>
-              )}
-              {req?.status === "declined" && <p className="text-2xs text-muted-foreground">Reason: {req.reason}</p>}
+                )}
+              </div>
+              {req?.status === "declined" && <p className="text-2xs text-foreground">“{req.reason}”</p>}
             </div>
           );
         })}
       </div>
-      <p className="mt-2 text-2xs text-muted-foreground">
-        Drivers don't browse open deliveries. {DISPATCH.name} sends each one to a driver, who accepts or declines with a reason.
-      </p>
     </section>
   );
 }
@@ -360,14 +348,14 @@ function VehicleSelect({ stop }: { stop: Stop }) {
 
 /* ---------------- #76 time-off requests ---------------- */
 
-function TimeOffRequests() {
+export function TimeOffRequests() {
   const { s, a } = useApp();
   const list = Object.entries(s.availability).filter(([iso, d]) => iso >= ROUTE_ISO && d.status === "unavailable");
   return (
     <section>
-      <div className="text-overline mb-2">Time-off requests · {DRIVER.name}</div>
+      <SectionHead title="Time off" />
       {list.length === 0 ? (
-        <p className="rounded-xl bg-muted p-3 text-[13px] text-muted-foreground">None. Request time off on the phone (Schedule → Time off).</p>
+        <p className="rounded-xl bg-muted p-3 text-[13px] text-muted-foreground">No requests</p>
       ) : (
         <div className="divide-y divide-border rounded-2xl border border-border">
           {list.map(([iso, d]) => (
@@ -393,39 +381,116 @@ function TimeOffRequests() {
   );
 }
 
-/* ---------------- #77 driver request status, #18 48-hour flag ---------------- */
-function DriverRequests() {
+/* ---------------- #77 driver request status, #18 reminders + 48-hour flag ---------------- */
+const REQ_BADGE = {
+  pending: { tone: "warning", label: "Pending" },
+  accepted: { tone: "success", label: "Accepted" },
+  declined: { tone: "danger", label: "Declined" },
+} as const;
+
+export function DriverRequests() {
   const { s, a } = useApp();
-  const list = s.requests.filter((r) => !r.placeholder && !r.orderId);
+  const list = s.requests.filter((r) => !r.placeholder && !r.orderId).sort((x, y) => x.dateISO.localeCompare(y.dateISO));
+  const pending = list.filter((r) => r.status === "pending").length;
   return (
     <section>
-      <div className="text-overline mb-2">Delivery requests · {DRIVER.name}</div>
+      <SectionHead
+        title={`Requests · ${DRIVER.first}`}
+        action={
+          <span className="flex gap-1.5">
+            <button onClick={a.remindRequests} disabled={!pending} className="h-8 rounded-full border border-control px-3 text-[13px] font-semibold disabled:opacity-40">
+              Remind
+            </button>
+            <button onClick={a.sendRequest} className="h-8 rounded-full bg-teal px-3 text-[13px] font-semibold text-white">
+              New request
+            </button>
+          </span>
+        }
+      />
       <div className="divide-y divide-border rounded-2xl border border-border">
         {list.map((r) => {
-          const flagged = r.status === "pending" && hoursUntil(r, s.clock) <= SETTINGS.requestFlagHours;
+          // #18: not answered and under 48 h → flagged; one red chip instead of two.
+          const flag = r.status === "pending" && hoursUntil(r, s.clock) <= SETTINGS.requestFlagHours;
+          const b = flag ? { tone: "danger" as const, label: "⚑ Pending · 48 h" } : REQ_BADGE[r.status];
           return (
-            <div key={r.id} className="flex items-start gap-2 px-4 py-3">
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold">
-                  {r.name} <span className="font-normal text-muted-foreground">· {r.orderNo}</span>
+            <div key={r.id} className="px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{r.name}</span>
+                  <span className="nums block text-2xs text-muted-foreground">
+                    {r.days ? `${r.dateLabel} +${r.days.length - 1} days` : r.dateLabel} · {fmtTime(r.time)}
+                  </span>
                 </span>
-                <span className="nums block text-2xs text-muted-foreground">
-                  {r.days ? `${r.days.length} days from ${r.dateLabel}` : r.dateLabel} · ~{fmtTime(r.time)} · sent {r.sentAt}
-                </span>
-                {r.status === "declined" && <span className="mt-0.5 block text-2xs text-muted-foreground">Reason: {r.reason}</span>}
-              </span>
-              <span className="flex flex-col items-end gap-1">
-                <Badge tone={r.status === "accepted" ? "success" : r.status === "declined" ? "danger" : "warning"}>
-                  {r.status === "accepted" ? "Driver accepted" : r.status === "declined" ? "Driver declined" : "Driver pending"}
-                </Badge>
-                {flagged && <Badge tone="danger">⚑ Not accepted · under 48 h</Badge>}
-              </span>
+                <Badge tone={b.tone}>{b.label}</Badge>
+              </div>
+              {r.status === "declined" && <p className="mt-1 text-2xs text-foreground">“{r.reason}”</p>}
             </div>
           );
         })}
       </div>
-      <button onClick={a.sendRequest} className="mt-2 h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white">
-        Send a new request
+    </section>
+  );
+}
+
+/** Section title with an optional action on the right. */
+function SectionHead({ title, action }: { title: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex min-h-8 items-center justify-between gap-2">
+      <h3 className="text-[15px] font-semibold">{title}</h3>
+      {action}
+    </div>
+  );
+}
+
+/* ---------------- #16 open hours: dispatch sets them, the driver sees them under Schedule ---------------- */
+export function OpenHoursEditor() {
+  const { s, a } = useApp();
+  const [draft, setDraft] = useState<OpenDay[]>(s.openHours);
+  // Picks up a demo reset while this panel is open.
+  useEffect(() => setDraft(s.openHours), [s.openHours]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(s.openHours);
+  const set = (i: number, h: OpenDay) => setDraft((d) => d.map((x, j) => (j === i ? h : x)));
+  const sel = "nums h-8 rounded-lg border border-control bg-card px-1.5 text-[13px] font-semibold outline-none focus:border-teal";
+  return (
+    <section>
+      <SectionHead title="Open hours" />
+      <div className="divide-y divide-border rounded-2xl border border-border">
+        {WEEKDAYS.map((day, i) => {
+          const h = draft[i];
+          return (
+            <div key={day} className="flex min-h-11 items-center gap-2 px-4 py-1.5 text-sm">
+              <span className="w-9 font-semibold">{day}</span>
+              <label className="flex items-center gap-1.5 text-[13px]">
+                <input type="checkbox" checked={!!h} onChange={(e) => set(i, e.target.checked ? { ...DEFAULT_HOURS } : null)} className="size-4 accent-[#007078]" />
+                Open
+              </label>
+              {h ? (
+                <span className="ml-auto flex items-center gap-1">
+                  <select aria-label={`${day} from`} className={sel} value={h.start} onChange={(e) => set(i, { start: +e.target.value, end: Math.max(h.end, +e.target.value + 30) })}>
+                    {TIME_OPTIONS.slice(0, -1).map((t) => (
+                      <option key={t} value={t}>
+                        {fmtTime(t)}
+                      </option>
+                    ))}
+                  </select>
+                  –
+                  <select aria-label={`${day} to`} className={sel} value={h.end} onChange={(e) => set(i, { ...h, end: +e.target.value })}>
+                    {TIME_OPTIONS.filter((t) => t > h.start).map((t) => (
+                      <option key={t} value={t}>
+                        {fmtTime(t)}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              ) : (
+                <span className="ml-auto text-[13px] text-muted-foreground">Off</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={() => a.setOpenHours(draft)} disabled={!dirty} className="mt-2 h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40">
+        {dirty ? "Save" : "Saved"}
       </button>
     </section>
   );

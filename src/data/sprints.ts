@@ -4,13 +4,13 @@
  * but shows "Coming soon" in the app and is left out of the flow guide.
  * Add an area to LIVE to reveal it.
  *   Sprint 1 (Oct 13): Route & stop (Wed Oct 14), Kitchen load (Wed Oct 14), Drop-off + crew (Thu Oct 15)
- *   Sprint 2 (Oct 19): Schedule & assignment, Reusable pickup, Notifications
+ *   Sprint 2 (Oct 19): Schedule & assignment (shown Oct 19, due Tue Oct 20), Reusable pickup, Notifications
  *   Sprint 3 (Oct 26): Login, profile & duty (incl. language)
  * ------------------------------------------------------------------ */
 
 export type Area = "route" | "kitchen" | "dropoff" | "team" | "schedule" | "reusables" | "notifications" | "profile" | "unplanned";
 
-export const LIVE: ReadonlySet<Area> = new Set<Area>(["route", "kitchen", "dropoff"]);
+export const LIVE: ReadonlySet<Area> = new Set<Area>(["route", "kitchen", "dropoff", "schedule"]);
 
 export interface AreaInfo {
   feature: string;
@@ -42,6 +42,7 @@ const SCREEN_AREA: Record<string, Area> = {
   collect: "reusables",
   schedule: "schedule",
   request: "schedule",
+  requests: "schedule",
   availability: "schedule",
   inbox: "notifications",
   me: "profile",

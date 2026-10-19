@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Minimize2, Route as RouteIcon, Smartphone, UserRound } from "lucide-react";
+import { CalendarDays, Check, Headphones, Minimize2, Route as RouteIcon, Smartphone, UserRound } from "lucide-react";
 import { AppProvider, runStops, useApp, useT, type Tab } from "./store";
 import { PhoneFrame } from "./components/PhoneFrame";
 import { cn, SfkMark } from "./components/ui";
@@ -10,7 +10,7 @@ import { StopDetail } from "./screens/StopDetail";
 import { Navigate } from "./screens/Navigate";
 import { CameraScreen, ProofScreen } from "./screens/Proof";
 import { History, MapTab, Me, Tracking } from "./screens/Tabs";
-import { RequestDetail, ScheduleTab } from "./screens/Schedule";
+import { RequestDetail, RequestsScreen, ScheduleTab } from "./screens/Schedule";
 import { Inbox } from "./screens/Inbox";
 import { ProblemFlow } from "./screens/Problem";
 import { PublicPage, ScanScreen } from "./screens/Scan";
@@ -20,7 +20,8 @@ import { Sheets } from "./screens/Sheets";
 import { AvailabilityScreen } from "./screens/Availability";
 import { CollectScreen } from "./screens/Collect";
 import { ComingSoon } from "./screens/ComingSoon";
-import { AREAS, hiddenArea, laterFor } from "./data/sprints";
+import { AREAS, hiddenArea, isOn, laterFor } from "./data/sprints";
+import { DispatchPage } from "./components/DispatchPage";
 
 const TABS: { id: Tab; label: string; icon: typeof RouteIcon | typeof SfkMark }[] = [
   { id: "today", label: "Home", icon: SfkMark },
@@ -103,6 +104,9 @@ function Screens({ full }: { full: boolean }) {
     case "request":
       body = <RequestDetail id={top.id} />;
       break;
+    case "requests":
+      body = <RequestsScreen />;
+      break;
     case "inbox":
       body = <Inbox />;
       break;
@@ -142,7 +146,7 @@ function Screens({ full }: { full: boolean }) {
 
   const isTabs = top.name === "tabs";
   const statusTop =
-    top.name === "camera" || top.name === "scan" ? "black" : isTabs && s.tab === "today" ? "tealSoft" : top.name === "stop" ? "mint" : (isTabs && s.tab === "history") || top.name === "navigate" ? "teal" : "light";
+    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || (s.tab === "schedule" && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" ? "mint" : (isTabs && s.tab === "history") || top.name === "navigate" ? "teal" : "light";
 
   return (
     <PhoneFrame top={statusTop} full={full}>
@@ -156,23 +160,19 @@ function Screens({ full }: { full: boolean }) {
       <Sheets />
       <PushBanner />
       <UpdateGate />
-      {/* Success pop-up (e.g. "Slip scanned"): white card with a green tick, near the top. */}
-      {s.notice && (
-        <div role="status" className="anim-rise absolute inset-x-0 top-14 z-[70] flex justify-center px-4">
-          <div className="nums flex items-center gap-2.5 rounded-2xl bg-white py-2 pl-2 pr-4 text-foreground shadow-raised">
-            <span className="grid size-8 place-items-center rounded-full bg-success-bg text-success">
-              <CheckCircle2 className="size-5" />
+      {/* Confirmations ("Accepted", "Slip scanned", "Sent to dispatch"): one dark-green banner that drops in under the
+          status bar, like a system banner. Kept off the bottom so it never covers the action buttons. */}
+      {(s.notice || s.toast) && (
+        <div role="status" key={s.notice?.title ?? s.toast} className="anim-drop absolute inset-x-2 top-1 z-[75] max-[500px]:top-[calc(env(safe-area-inset-top)+4px)]">
+          <div data-dark-surface className="flex items-center gap-3 rounded-[18px] bg-teal-deep px-3.5 py-3 text-white shadow-[0_10px_30px_rgba(0,64,69,0.28)]">
+            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-success">
+              <Check className="size-4" strokeWidth={3} />
             </span>
-            <span className="text-left leading-tight">
-              <span className="block text-[13px] font-bold text-success">{s.notice.title}</span>
-              {s.notice.body && <span className="block text-[13px] text-muted-foreground">{s.notice.body}</span>}
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-[15px] font-semibold">{s.notice?.title ?? s.toast}</span>
+              {s.notice?.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{s.notice.body}</span>}
             </span>
           </div>
-        </div>
-      )}
-      {s.toast && (
-        <div role="status" className="anim-fade absolute inset-x-4 bottom-28 z-[70] rounded-2xl bg-teal-deep px-4 py-3 text-center text-sm font-semibold text-white shadow-raised">
-          {s.toast}
         </div>
       )}
     </PhoneFrame>
@@ -182,6 +182,8 @@ function Screens({ full }: { full: boolean }) {
 export default function App() {
   // Phone view: the app fills the browser window with its mobile layout, as on a real phone. Esc goes back to the frame.
   const [full, setFull] = useState(false);
+  // Dispatch page beside the phone (desktop only). Shown once the Schedule sprint is live.
+  const [dispatch, setDispatch] = useState(false);
   useEffect(() => {
     if (!full) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
@@ -192,8 +194,13 @@ export default function App() {
   return (
     <AppProvider>
       <div className={cn("flex h-full overflow-y-auto", full && "block")}>
-        <div className={cn("m-auto flex justify-center p-6 max-[500px]:w-full max-[500px]:p-0", full && "w-full p-0")}>
+        <div className={cn("m-auto flex items-start justify-center gap-6 p-6 max-[500px]:w-full max-[500px]:p-0", full && "w-full p-0")}>
           <Screens full={full} />
+          {dispatch && !full && (
+            <div className="max-[960px]:hidden">
+              <DispatchPage onClose={() => setDispatch(false)} />
+            </div>
+          )}
         </div>
       </div>
       {full ? (
@@ -206,15 +213,29 @@ export default function App() {
           <Minimize2 className="size-3.5" /> Exit phone view
         </button>
       ) : (
-        <button
-          onClick={() => setFull(true)}
-          className="anim-fade fixed bottom-6 right-6 z-[80] flex h-12 items-center gap-2 rounded-full bg-teal-deep pl-1.5 pr-5 text-sm font-semibold text-white shadow-raised transition hover:bg-sidebar-active max-[500px]:hidden"
-        >
-          <span className="grid size-9 place-items-center rounded-full bg-yellow text-teal-deep">
-            <Smartphone className="size-[18px]" />
-          </span>
-          Phone view
-        </button>
+        <div className="fixed bottom-6 right-6 z-[80] flex gap-2 max-[500px]:hidden">
+          {isOn("schedule") && (
+            <button
+              onClick={() => setDispatch((d) => !d)}
+              aria-pressed={dispatch}
+              className="anim-fade flex h-12 items-center gap-2 rounded-full border border-border-strong bg-card pl-1.5 pr-5 text-sm font-semibold text-teal-deep shadow-raised transition hover:bg-teal-wash max-[960px]:hidden"
+            >
+              <span className="grid size-9 place-items-center rounded-full bg-teal-wash text-teal-deep">
+                <Headphones className="size-[18px]" />
+              </span>
+              {dispatch ? "Hide dispatch" : "Dispatch view"}
+            </button>
+          )}
+          <button
+            onClick={() => setFull(true)}
+            className="anim-fade flex h-12 items-center gap-2 rounded-full bg-teal-deep pl-1.5 pr-5 text-sm font-semibold text-white shadow-raised transition hover:bg-sidebar-active"
+          >
+            <span className="grid size-9 place-items-center rounded-full bg-yellow text-teal-deep">
+              <Smartphone className="size-[18px]" />
+            </span>
+            Phone view
+          </button>
+        </div>
       )}
     </AppProvider>
   );

@@ -340,13 +340,14 @@ function Flows({ onClose }: { onClose: () => void }) {
           flow: [
             Start("Schedule / Me"),
             Scr("Time off", timeOff),
-            Act("Pick a day"),
+            Act("Tap a day"),
+            Scr("Day sheet · deliveries that day"),
             Dec(`Within ${SETTINGS.timeOffNoticeDays} days?`, [
-              ["Yes", [Sys("Day locked · can't pick"), End("Too late to request")]],
+              ["Yes", [Sys("No request button · Call dispatch"), End("Too late to request")]],
               [
                 "No",
                 [
-                  Act("Send request", "Dispatch: time-off request to approve"),
+                  Act("Request day off", "Dispatch: time-off request to approve"),
                   Scr("Day shows “Requested” · still assignable"),
                   Dec("Dispatch approves?", [
                     ["Yes", [End("Time off · not assigned")]],

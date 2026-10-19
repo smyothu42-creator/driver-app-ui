@@ -31,11 +31,21 @@ export function Today() {
           <div className="min-w-0">
             <h1 className="text-[26px] font-bold leading-tight tracking-tight">{s.lang === "es" ? "Hola" : "Hi"} {DRIVER.first}</h1>
           </div>
+          <div className="flex items-center gap-2">
+          {/* #18: pending delivery requests, as a small calendar button with a count (opens Schedule). Kept out of the
+              middle of the screen so the next step stays the first thing the driver sees. */}
+          {pending > 0 && (
+            <button onClick={() => a.push({ name: "requests" })} aria-label={`${pending} ${pending === 1 ? t("request needs your answer") : t("requests need your answer")}`} className="relative grid size-10 place-items-center rounded-full bg-white text-teal-deep">
+              <CalendarClock className="size-[18px]" />
+              <span className="nums absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{pending}</span>
+            </button>
+          )}
           {/* #6 Inbox with dispatch. */}
           <button onClick={() => a.push({ name: "inbox" })} aria-label={`${t("Inbox")}, ${fromDispatch} messages`} className="relative grid size-10 place-items-center rounded-full bg-white text-teal-deep">
             <Bell className="size-[18px]" />
             {fromDispatch > 0 && isOn("notifications") && <span className="nums absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{fromDispatch}</span>}
           </button>
+          </div>
         </div>
       </div>
 
@@ -87,16 +97,6 @@ export function Today() {
       ) : (
       // The next-stop card runs full width down to the tab bar and tucks 16px into the mint header, so the two touch.
       <div className={cn("relative z-[2] -mt-4 flex flex-1 flex-col space-y-5 px-4", s.pickupDone && !next && "pb-6")}>
-        {/* #18: pending delivery requests (hidden with the Schedule sprint). Above the next step so the full-height card stays last. */}
-        {pending > 0 && (
-          <button onClick={() => a.setTab("schedule")} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-yellow-deep/40 bg-yellow-wash px-4 text-left active:scale-[0.99]">
-            <CalendarClock className="size-5 shrink-0 text-teal-deep" />
-            <span className="min-w-0 flex-1 text-[15px] font-semibold text-teal-deep">
-              {pending} {pending === 1 ? t("request needs your answer") : t("requests need your answer")}
-            </span>
-            <ChevronRight className="size-5 shrink-0 text-teal-deep/70" />
-          </button>
-        )}
         <section className={cn((!s.pickupDone || next) && "-mx-4 flex flex-1 flex-col")}>
           {/* "Your next step" heading hidden for now. */}
           {!s.pickupDone ? <PickupCard /> : next ? <NextStopCard stop={next} /> : <DoneCard />}

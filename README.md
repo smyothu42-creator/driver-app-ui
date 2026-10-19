@@ -25,11 +25,10 @@ To stop it, click the Terminal window and press Ctrl + C.
 
 ## Design timeline gate (3-week sprint plan, Oct 13 – 30 2026)
 
-**Route & stop**, **Kitchen load** and **Drop-off** (Sprint 1) are shown right now; crew / roles / lead attendance stay hidden under their own `team` area. Nothing is deleted:
+**Route & stop**, **Kitchen load**, **Drop-off** (Sprint 1), **Schedule & assignments** (Sprint 2, shown Oct 19) are shown right now; crew / roles / lead attendance stay hidden under their own `team` area. Nothing is deleted:
 every other feature stays in the code, shows a **Coming soon** screen ("Being designed in Sprint 1 ·
 Thu, Oct 15") or is left out of a screen, and its flows are left out of the guide panel. Add an area to
-`LIVE` in `src/data/sprints.ts` to reveal it (`team`, `schedule`, `reusables`,
-`notifications`, `profile`).
+`LIVE` in `src/data/sprints.ts` to reveal it (`team`, `reusables`, `profile`).
 
 | Area (sprint) | Shown now | Hidden for now |
 |---|---|---|
@@ -37,7 +36,9 @@ Thu, Oct 15") or is left out of a screen, and its flows are left out of the guid
 | Kitchen load (1) | Kitchen pickup row; **scan packing slip** → package items → slide "loaded, in transit" (#9, Proposed); slip QR → **public delivery page** + "Are you a driver?" into the app for arrival and drop (#10, Proposed); **time since loading** chip on the next stop, amber 15 min before SFK's 60-min food-safety limit, red past it (#22, Proposed · parking lot) | — |
 | Drop-off (1) | Setup checklist on arrival, set by company or address (#11, Agreed); camera + proof with photos, notes, on time / delayed (#4, Agreed); delivered with who received it, setup + service end logged separately (#12, Agreed); delivered away from the address warns + flags dispatch (#13, Agreed); location + time logged with every delivery, shown on the stop (#75, Agreed); problem flow with step prompts, photos, call dispatch (#21, Agreed); office override for an appless driver from the dispatch board (#74, Agreed); "Setup by" tag | — |
 | Crew (1, `team`) | — | Crew / roles / lead in-out on the stop, "Reassigned" tag |
-| Schedule (2), Reusables (2), Notifications (2) | — | Schedule tab, requests, time off, "To collect" / "Also collect", Collect screen, Inbox + bell count, requests nudge |
+| Schedule & assignments (2) | **Schedule** tab in the Home / Route / Stop style (mint header + "Requested · Coming up · Time off" card, Route-style request cards with work type, one-word status). Dispatch sends requests (#19); **Accept** or **Can't do it** with a reason (#18); reminder every `requestReminderHours`, warning + dispatch flag under `requestFlagHours` (48 h); pending requests show full detail incl. multi-day ("Accept all 3 days") (#20); **Coming up** by day with rough times checked against that day's open hours (#17); **Your open hours**, read-only (#16); **Time off** ≥ 7 days ahead, Requested → Approved by dispatch, warns when the day has accepted work (#76). Counts (meals) left off, per the Oct 14 review. **Dispatch view** button (desktop) opens the SFK Admin dispatch page beside the phone: *Driver pending / accepted / declined* + reason, ⚑ under-48 h flag, last/next reminder + *Send reminder now*, *Send a new request*, unassigned orders, **open hours editor** (push to the driver), time-off approve / decline (push to the driver). `DispatchPage.tsx` | — |
+| Notifications (2) | **Inbox** from the Home bell (unread count), push banners, quick replies to dispatch (presets only). Request reminders, open-hours changes and time-off answers land here and open Schedule / Time off when tapped | — |
+| Reusables (2) | — | "To collect" / "Also collect", Collect screen |
 | Profile (3) | Ready toggle (needed to reach the route). The prototype opens already signed in; sign-in and permissions are skipped (`initial()` in `src/store.tsx`) | Me tab, Vehicle + "Use SFK Van 2", Location sharing page, Spanish |
 | Not in plan | — | History (removed from the tab bar Oct 15 2026; **to be added to the Me / profile page when Profile is designed**), offline, update prompt |
 
@@ -211,7 +212,7 @@ the phone does (time change, cancel, new request, offline, update, away from add
 | 14 | Tap to call site contact or dispatch | Stop details: three one-tap buttons **[Contact] [Dispatch] [Problem]**, plus call buttons on each contact. Calls go through an SFK number. |
 | 15 | Push when time changes or order cancelled | Push banner at the top of the phone (tap opens the stop) + high-priority inbox message. Time change shows **New time** with old window struck; cancel shows a red banner with what to do with the food. |
 | 16 | Dispatch sets open hours, driver views | **Schedule → Your open hours** (read-only, "Set by dispatch"). `OPEN_HOURS`. |
-| 76 | Out of office at least X days ahead | **Time off** request: Working / Time off; days inside `SETTINGS.timeOffNoticeDays` (7) are locked. Requests wait for dispatch approval. |
+| 76 | Out of office at least X days ahead | **Time off** request: tap a day → sheet with that day's deliveries → **Request day off** (sent straight to dispatch, no checkboxes). Days inside `SETTINGS.timeOffNoticeDays` (7) are locked. Requests wait for dispatch approval. |
 | 17 | Upcoming deliveries with rough times | **Schedule → Coming up**, grouped by day, "~11:30 AM". Recurring placeholders show as **Usual** ("order not in yet"). |
 | 18 / 77 | Confirm every assignment; decline needs a comment; reminders; 48 h flag; statuses on dispatch | **Schedule → Needs your answer** (badge on the tab, nudge on Home). Request screen: **Accept** (primary) or **Can't do it** → reason presets, "Other" needs a few words. Under 48 h shows a warning to the driver and **⚑ Not accepted · under 48 h** on the dispatch board, where every request shows *Driver pending / accepted / declined*. Reminder interval `SETTINGS.requestReminderHours`. |
 | 19 | Dispatch sends delivery requests | Dispatch tab **Send a new request** → push + inbox → request screen. |

@@ -23,16 +23,18 @@ export function Inbox() {
   const open = (m: Msg) => {
     if (m.requestId) a.push({ name: "request", id: m.requestId });
     else if (m.stopId) a.push({ name: "stop", id: m.stopId });
+    else if (m.goto === "schedule") a.setTab("schedule");
+    else if (m.goto === "availability") a.push({ name: "availability" });
   };
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar title={t("Inbox")} subtitle={`With dispatch · ${DISPATCH.name}`} onBack={a.back} />
+      <TopBar title={t("Inbox")} subtitle={`With dispatch · ${DISPATCH.name}`} onBack={a.back} tone="white" />
       <ol className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
         {s.inbox.map((m) => {
           const Icon = ICON[m.kind];
           const mine = m.from === "you";
-          const tappable = !!(m.requestId || m.stopId);
+          const tappable = !!(m.requestId || m.stopId || m.goto);
           const Tag = tappable ? "button" : "div";
           return (
             <li key={m.id} className={cn("flex", mine && "justify-end")}>

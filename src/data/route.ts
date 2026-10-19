@@ -451,16 +451,27 @@ export const DEFAULT_VEHICLE_ID = "v-own";
 /** Free text only dispatch can edit; drivers read it (#64). */
 export const STORAGE_DETAILS = "Fits 6 hot carriers + 2 cold boxes. Rear row folds flat. No chafing kits on the back seat.";
 
-/* ---------------- Open hours (#16): set by dispatch, read-only for the driver ---------------- */
-export const OPEN_HOURS: { day: string; hours: string | null }[] = [
-  { day: "Mon", hours: "9:30 AM – 2:30 PM" },
-  { day: "Tue", hours: "9:30 AM – 2:30 PM" },
-  { day: "Wed", hours: "9:30 AM – 2:30 PM" },
-  { day: "Thu", hours: "9:30 AM – 2:30 PM" },
-  { day: "Fri", hours: "10:00 AM – 1:30 PM" },
-  { day: "Sat", hours: null },
-  { day: "Sun", hours: null },
+/* ---------------- Open hours (#16): set by dispatch, read-only for the driver ----------------
+ * Minutes since midnight per weekday, Monday first. null = closed (no work sent that day).
+ * Dispatch edits these on the dispatch page; the phone shows them under Schedule → Your open hours.
+ */
+export type OpenDay = { start: number; end: number } | null;
+export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+export const OPEN_HOURS: OpenDay[] = [
+  { start: 9 * 60 + 30, end: 14 * 60 + 30 },
+  { start: 9 * 60 + 30, end: 14 * 60 + 30 },
+  { start: 9 * 60 + 30, end: 14 * 60 + 30 },
+  { start: 9 * 60 + 30, end: 14 * 60 + 30 },
+  { start: 10 * 60, end: 13 * 60 + 30 },
+  null,
+  null,
 ];
+/** Monday-first weekday index (0–6) of an ISO date. */
+export const weekdayOf = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return (new Date(y, m - 1, d).getDay() + 6) % 7;
+};
+export const fmtHours = (h: OpenDay) => (h ? `${fmtTime(h.start)} – ${fmtTime(h.end)}` : "Off");
 
 /* ---------------- Delivery requests (#17–20, #77) ----------------
  * Every assignment is a request the driver confirms. Declining needs a reason.
@@ -476,11 +487,18 @@ export interface DeliveryRequest {
   address: string;
   dateISO: string;
   dateLabel: string;
-  /** Multi-day orders list every day (#20). */
+  /** Multi-day orders list every day (#20). `dayISOs` matches `days` one to one. */
   days?: string[];
+  dayISOs?: string[];
   time: number; // rough time, minutes since midnight
+  /** Kept for dispatch only. Review Oct 14 2026: counts aren't shown to drivers. */
   meals: number;
   type: string;
+  customerType: CustomerType;
+  /** Review Oct 14 2026: work type on every stop, so on every request too. */
+  work: Work[];
+  /** #18: last reminder sent (minutes since midnight today); the next one is SETTINGS.requestReminderHours later. */
+  remindedAt?: number;
   role?: StaffRole;
   placeholder?: boolean;
   status: RequestStatus;
@@ -489,11 +507,30 @@ export interface DeliveryRequest {
 }
 
 export const REQUESTS: DeliveryRequest[] = [
-  { id: "r1", orderNo: "ORD-3131", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-07", dateLabel: "Wed, Oct 7", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", status: "accepted", sentAt: "Mon 4:10 PM" },
-  { id: "r2", orderNo: "ORD-3140", name: "Brightline Health", address: "1 Sansome St", dateISO: "2026-10-07", dateLabel: "Wed, Oct 7", time: 12 * 60, meals: 40, type: "Family Style", role: "Lead Event Staff", status: "pending", sentAt: "Mon 9:00 AM" },
-  { id: "r3", orderNo: "ORD-3135", name: "Halcyon Labs", address: "1 Market St", dateISO: "2026-10-08", dateLabel: "Thu, Oct 8", time: 12 * 60 + 30, meals: 14, type: "Daily Lunch", status: "pending", sentAt: "Today 8:15 AM" },
-  { id: "r4", orderNo: "ORD-3150", name: "Summit Partners offsite", address: "Fort Mason Center, Pier 2", dateISO: "2026-10-12", dateLabel: "Mon, Oct 12", days: ["Mon, Oct 12", "Tue, Oct 13", "Wed, Oct 14"], time: 11 * 60 + 45, meals: 60, type: "Family Style", role: "Driver", status: "pending", sentAt: "Today 9:40 AM" },
-  { id: "r5", orderNo: "Usual route", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 11 * 60 + 30, meals: 0, type: "Daily Lunch", placeholder: true, status: "accepted", sentAt: "Weekly plan" },
+  { id: "r1", orderNo: "ORD-3131", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-07", dateLabel: "Wed, Oct 7", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Mon 4:10 PM" },
+  { id: "r2", orderNo: "ORD-3140", name: "Brightline Health", address: "1 Sansome St", dateISO: "2026-10-07", dateLabel: "Wed, Oct 7", time: 12 * 60, meals: 40, type: "Family Style", customerType: "family", work: ["hot", "cold"], role: "Lead Event Staff", status: "pending", sentAt: "Mon 9:00 AM", remindedAt: 9 * 60 + 40 },
+  { id: "r3", orderNo: "ORD-3135", name: "Halcyon Labs", address: "1 Market St", dateISO: "2026-10-08", dateLabel: "Thu, Oct 8", time: 12 * 60 + 30, meals: 14, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "pending", sentAt: "Today 8:15 AM", remindedAt: 9 * 60 + 40 },
+  { id: "r4", orderNo: "ORD-3150", name: "Summit Partners offsite", address: "Fort Mason Center, Pier 2", dateISO: "2026-10-12", dateLabel: "Mon, Oct 12", days: ["Mon, Oct 12", "Tue, Oct 13", "Wed, Oct 14"], dayISOs: ["2026-10-12", "2026-10-13", "2026-10-14"], time: 11 * 60 + 45, meals: 60, type: "Family Style", customerType: "family", work: ["hot", "cold"], role: "Driver", status: "pending", sentAt: "Today 9:40 AM", remindedAt: 9 * 60 + 40 },
+  { id: "r5", orderNo: "Usual route", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 11 * 60 + 30, meals: 0, type: "Daily Lunch", customerType: "corporate", work: ["hot"], placeholder: true, status: "accepted", sentAt: "Weekly plan" },
+  // More accepted work so Coming up shows a real few weeks.
+  { id: "r7", orderNo: "ORD-3162", name: "Cobalt Robotics", address: "185 Berry St", dateISO: "2026-10-07", dateLabel: "Wed, Oct 7", time: 13 * 60 + 15, meals: 18, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Mon 2:20 PM" },
+  { id: "r8", orderNo: "ORD-3165", name: "Mission Bay Clinic", address: "1825 4th St", dateISO: "2026-10-08", dateLabel: "Thu, Oct 8", time: 10 * 60 + 45, meals: 12, type: "Breakfast", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Mon 3:05 PM" },
+  { id: "r9", orderNo: "ORD-3167", name: "Harbor Analytics", address: "100 Pine St", dateISO: "2026-10-08", dateLabel: "Thu, Oct 8", time: 11 * 60 + 45, meals: 26, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Mon 3:05 PM" },
+  { id: "r10", orderNo: "ORD-3170", name: "Redwood Design Co.", address: "690 5th St", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 11 * 60, meals: 30, type: "Daily Lunch", customerType: "corporate", work: ["hot", "cold"], status: "accepted", sentAt: "Mon 5:30 PM" },
+  { id: "r11", orderNo: "ORD-3171", name: "Golden Gate Montessori", address: "2340 Jackson St", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 12 * 60 + 15, meals: 24, type: "Family Style", customerType: "family", work: ["hot"], status: "accepted", sentAt: "Mon 5:30 PM" },
+  { id: "r12", orderNo: "ORD-3174", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-12", dateLabel: "Mon, Oct 12", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 7:50 AM" },
+  { id: "r13", orderNo: "ORD-3176", name: "Embarcadero Legal", address: "4 Embarcadero Center", dateISO: "2026-10-13", dateLabel: "Tue, Oct 13", time: 12 * 60 + 30, meals: 16, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 7:50 AM" },
+  { id: "r14", orderNo: "ORD-3178", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-14", dateLabel: "Wed, Oct 14", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 7:50 AM" },
+  { id: "r15", orderNo: "ORD-3181", name: "Fogline Coffee HQ", address: "1 Ferry Building", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 10 * 60, meals: 20, type: "Breakfast", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:05 AM" },
+  { id: "r16", orderNo: "ORD-3183", name: "Brightline Health", address: "1 Sansome St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 12 * 60, meals: 38, type: "Family Style", customerType: "family", work: ["hot", "cold"], status: "accepted", sentAt: "Today 8:05 AM" },
+  { id: "r17", orderNo: "ORD-3186", name: "Lumen Studio", address: "500 Terry A Francois Blvd", dateISO: "2026-10-16", dateLabel: "Fri, Oct 16", time: 12 * 60 + 45, meals: 16, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:05 AM" },
+  { id: "r18", orderNo: "ORD-3190", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-19", dateLabel: "Mon, Oct 19", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 8:30 AM" },
+  { id: "r19", orderNo: "ORD-3192", name: "Halcyon Labs", address: "1 Market St", dateISO: "2026-10-20", dateLabel: "Tue, Oct 20", time: 12 * 60 + 30, meals: 14, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:30 AM" },
+  { id: "r20", orderNo: "ORD-3195", name: "Presidio Sports Club", address: "1 Letterman Dr", dateISO: "2026-10-21", dateLabel: "Wed, Oct 21", time: 13 * 60, meals: 45, type: "Family Style", customerType: "family", work: ["hot", "cold"], status: "accepted", sentAt: "Today 8:30 AM" },
+  // A busy day (Thu, Oct 15: five deliveries) so the time-off sheet shows "+2 more".
+  { id: "r21", orderNo: "ORD-3197", name: "Cobalt Robotics", address: "185 Berry St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 11 * 60, meals: 18, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:40 AM" },
+  { id: "r22", orderNo: "ORD-3198", name: "Harbor Analytics", address: "100 Pine St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 12 * 60 + 45, meals: 26, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 8:40 AM" },
+  { id: "r23", orderNo: "ORD-3199", name: "Golden Gate Montessori", address: "2340 Jackson St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 13 * 60 + 30, meals: 24, type: "Family Style", customerType: "family", work: ["hot"], status: "accepted", sentAt: "Today 8:40 AM" },
 ];
 
 export const PAST = [
