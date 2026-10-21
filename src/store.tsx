@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { DEFAULT_VEHICLE_ID, DISPATCH, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_HOURS, OPEN_POOL, REQUESTS, workOf, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, type Assignment, type DeliveryRequest, type OpenDay, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
+import { DEFAULT_VEHICLE_ID, DISPATCH, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_HOURS, OPEN_POOL, REQUESTS, workOf, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, sameAddress, type Assignment, type DeliveryRequest, type OpenDay, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
 import { translate, type Lang } from "./i18n";
 import { isOn } from "./data/sprints";
 import { coversWindow, dayOf, type Availability } from "./data/availability";
@@ -15,9 +15,9 @@ export type Screen =
   | { name: "camera"; id: string }
   | { name: "proof"; id: string }
   | { name: "tracking" }
-  | { name: "scan" } // #9 packing-slip scanner at the kitchen
+  | { name: "scan"; id?: string } // #9 packing-slip scanner at the kitchen; `id` = opened from that order, so the next scan reads its slip
   | { name: "package"; id: string } // #9 after a scan: check the items inside that package
-  | { name: "problem"; id: string } // #21 step-by-step problem flow
+  | { name: "problem"; id: string; reusables?: string[] } // #21 step-by-step problem flow; `reusables` = what's short after a count (#53)
   | { name: "request"; id: string } // #18 one delivery request
   | { name: "requests" } // #18 only the requests waiting for an answer (Home's request button)
   | { name: "inbox" } // #6 messages to and from dispatch
@@ -42,7 +42,10 @@ export type Sheet =
   | { name: "decline"; id: string } // #18 decline needs a reason
   | { name: "language" } // #25
   | { name: "update" } // #24
-  | { name: "openHours" }; // #16 the week, from the Schedule header
+  | { name: "openHours" } // #16 the week, from the Schedule header
+  | { name: "laterPickup"; id: string } // an order on a later kitchen pickup, tapped from Home: when it's loaded
+  | { name: "skip"; id: string } // reusables pickup: ask dispatch to skip it, with a reason
+  | { name: "packingList"; id: string }; // reusables pickup: the packing list, to view, download or share
 
 export type Handoff = "handed" | "left";
 
@@ -60,6 +63,7 @@ export interface StopState {
   setupDone?: boolean[];
   issuePhotos?: number;
   delayReason?: string; // #4 why it was delayed (preset)
+  delayNote?: string; // #4 free text when the reason is "Other"
   /** #13 / #75: where the driver was when they marked it delivered. */
   deliveredAway?: boolean;
   setupEndAt?: number; // #12
@@ -68,6 +72,8 @@ export interface StopState {
   officeOverride?: boolean; // #74 marked at the SFK office for an appless driver
   collected?: Record<string, number>; // #53 reusable item id → actual count
   collectPhotos?: number;
+  /** Reusables pickup: the driver asked dispatch to skip it. Approved = the stop drops off the route. */
+  skip?: { reason: string; at: number; status: "pending" | "approved" | "declined"; decidedAt?: number };
 }
 
 /** #15: a dispatch change to a stop's time. The driver sees old → new. */
@@ -163,6 +169,17 @@ export interface State {
 
 const initialStops = () =>
   Object.fromEntries([...STOPS, ...OPEN_POOL].map((s) => [s.id, { status: "queued", photos: 0 } as StopState]));
+
+/**
+ * The prototype always starts clean on reload: nothing is kept between sessions (Oct 21 2026). The real app saves
+ * kitchen checks to the phone on every tap; an old saved entry from earlier builds is cleared here.
+ */
+const LOAD_KEY = "sfk-load-progress";
+try {
+  localStorage.removeItem(LOAD_KEY);
+} catch {
+  // no storage (private window): nothing to clear
+}
 
 const initial = (): State => ({
   clock: KITCHEN.readyAt - 4,
@@ -308,8 +325,10 @@ function useAppState() {
           sheet: null,
         })),
 
-      // #3: navigation happens in the app (user decision, Oct 14 2026): turn card, ETA, instructions, slide to arrive.
-      startNav: (id: string) =>
+      // #3 (Oct 20 2026): turn-by-turn opens in Google Maps to start. This screen stays behind it with the same
+      // ETA, instructions, call and "slide when you arrive", so the driver comes back here to arrive.
+      startNav: (id: string) => {
+        toast("Opening Google Maps…");
         set((prev) => ({
           ...prev,
           clock: prev.clock + 1,
@@ -317,7 +336,8 @@ function useAppState() {
           sheet: null,
           stops: { ...prev.stops, [id]: { ...prev.stops[id], status: "en_route", enRouteAt: prev.clock + 1 } },
           stack: [...prev.stack.filter((x) => x.name !== "navigate"), { name: "navigate", id }],
-        })),
+        }));
+      },
       arrive: (id: string, driveMins: number) =>
         set((prev) => ({
           ...prev,
@@ -515,19 +535,21 @@ function useAppState() {
           return { vehicleFor };
         }),
       /** #53: actual counts + photo. A pickup stop is done when collected; on a delivery it's an add-on. */
-      collectReusables: (id: string, counts: Record<string, number>, photos: number, short: string | null) =>
+      /** Missing items aren't noted here: the collect screen opens the problem flow for them (Oct 21 2026). */
+      collectReusables: (id: string, counts: Record<string, number>, photos: number) =>
         set((p) => {
           const stop = findStop(p, id);
-          const pickup = stop.kind === "pickup";
+          // Collected during the delivery at the same address: it's done, but the driver stays on that delivery.
+          const alongside = !!pickupDelivery(p, stop);
+          const pickup = stop.kind === "pickup" && !alongside;
           const st = p.stops[id];
           return {
             ...p,
             clock: p.clock + (pickup ? 6 : 0),
             stops: {
               ...p.stops,
-              [id]: { ...st, collected: counts, collectPhotos: photos, returnsCollected: true, ...(pickup ? { status: "delivered" as const, deliveredAt: p.clock + 5, deliveredAway: p.awayFromAddress } : {}) },
+              [id]: { ...st, collected: counts, collectPhotos: photos, returnsCollected: true, ...(stop.kind === "pickup" ? { status: "delivered" as const, deliveredAt: p.clock + (pickup ? 5 : 0), deliveredAway: p.awayFromAddress } : {}) },
             },
-            inbox: short ? [{ id: `m${++msgSeq}`, at: p.clock, from: "you", kind: "reply", title: `Reusables short at ${stop.name}`, body: `${short}. Dispatch lead decides: write off or pending.`, stopId: id, priority: "high" }, ...p.inbox] : p.inbox,
             stack: pickup ? [{ name: "tabs" }] : p.stack.filter((x) => x.name !== "collect"),
             tab: pickup ? "today" : p.tab,
             sheet: pickup ? { name: "delivered", id } : null,
@@ -592,12 +614,37 @@ function useAppState() {
           };
         }),
       /** #74: SFK office marks a stop for a driver without the app. */
+      /** Reusables pickup: ask dispatch to skip it. It stays on the route until dispatch decides. */
+      requestSkip: (id: string, reason: string) => {
+        patch((p) => ({
+          sheet: null,
+          stops: { ...p.stops, [id]: { ...p.stops[id], skip: { reason, at: p.clock, status: "pending" } } },
+          inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "you", kind: "reply", title: `Asked to skip the pickup at ${findStop(p, id).name}`, body: reason, stopId: id, priority: "medium" }, ...p.inbox],
+        }));
+        toast("Sent to dispatch · keep it on your route until they reply");
+      },
+      /** Dispatch view: approve (the pickup drops off the route) or decline (it stays) a skip request. */
+      decideSkip: (id: string, ok: boolean) =>
+        set((p) => {
+          const st = p.stops[id];
+          if (!st.skip) return p;
+          const name = findStop(p, id).name;
+          return {
+            ...p,
+            stops: { ...p.stops, [id]: { ...st, skip: { ...st.skip, status: ok ? "approved" : "declined", decidedAt: p.clock }, ...(ok ? { status: "cancelled" as const, cancelledAt: p.clock } : {}) } },
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: ok ? "cancel" : "info", title: ok ? `Pickup skipped · ${name}` : `Please still pick up at ${name}`, body: ok ? "Dispatch took it off your route." : "Dispatch needs this pickup today.", stopId: id, priority: "high" }, ...p.inbox],
+            ...queued(p),
+          };
+        }),
       officeDeliver: (id: string) =>
         set((p) => ({
           ...p,
           stops: { ...p.stops, [id]: { ...p.stops[id], status: "delivered", deliveredAt: p.clock, officeOverride: true, handoff: "handed", receivedBy: "Marked at SFK office" } },
         })),
-      resetDemo: () => set(initial()),
+      resetDemo: () =>
+        set(() => {
+          return initial();
+        }),
       jump: (fn: (s: State) => Partial<State>) => patch(fn),
     }),
     [patch, patchStop, toast, popup],
@@ -648,6 +695,23 @@ export function liveRoute(s: Parameters<typeof routeOf>[0] & Pick<State, "stops"
   return routeOf(s).filter((x) => s.stops[x.id].status !== "cancelled");
 }
 
+const openStatus = (st: StopState) => st.status !== "delivered" && st.status !== "cancelled";
+
+/**
+ * A reusables pickup at the same address as a delivery still to do is picked up during that delivery
+ * (Oct 21 2026). Returns that delivery, or undefined once the pickup is done or the delivery is (then the
+ * pickup is its own stop again).
+ */
+export function pickupDelivery(s: Parameters<typeof liveRoute>[0], pickup: Stop): Stop | undefined {
+  if (pickup.kind !== "pickup" || !openStatus(s.stops[pickup.id])) return undefined;
+  return liveRoute(s).find((x) => x.kind !== "pickup" && sameAddress(x, pickup) && openStatus(s.stops[x.id]));
+}
+
+/** Reusables pickups riding along with this delivery. */
+export function pickupsAt(s: Parameters<typeof liveRoute>[0], delivery: Stop): Stop[] {
+  return liveRoute(s).filter((x) => x.kind === "pickup" && pickupDelivery(s, x)?.id === delivery.id);
+}
+
 /** #22: minutes since the route was loaded, and where that sits against SFK's food-safety limit. */
 export function foodSafety(s: Pick<State, "pickupAt" | "clock">, limit: number, warn: number) {
   if (s.pickupAt == null) return null;
@@ -678,7 +742,8 @@ export function findStop(s: Pick<State, "claims"> & Partial<Pick<State, "changes
  * (and comes back as "next" once it's the only one left) in case dispatch says to deliver after all.
  */
 export function nextStop(s: Pick<State, "claims" | "stops"> & Partial<Pick<State, "changes" | "order">>) {
-  const open = routeOf(s).filter((x) => s.stops[x.id].status !== "delivered" && s.stops[x.id].status !== "cancelled");
+  // A pickup riding along with a delivery isn't a stop of its own while that delivery is still to do.
+  const open = routeOf(s).filter((x) => openStatus(s.stops[x.id]) && !pickupDelivery(s, x));
   return open.find((x) => !s.stops[x.id].issue) ?? open[0];
 }
 
@@ -698,6 +763,14 @@ export function loadStep(s: Parameters<typeof runStops>[0] & Pick<State, "scanne
   if (open) return { name: "package", id: open.id };
   if (route.some((x) => !s.scanned[x.id])) return { name: "scan" };
   return route.length ? { name: "package", id: route[route.length - 1].id } : { name: "scan" };
+}
+
+/**
+ * Every packing slip the driver may scan today (Oct 20 2026): this pickup's orders first, then later pickups'.
+ * A slip that isn't in this list isn't on their route, and the scanner stops them there.
+ */
+export function slipsToday(s: Parameters<typeof liveRoute>[0] & Pick<State, "run" | "pickupDone">) {
+  return liveRoute(s).filter((x) => x.kind !== "pickup" && x.bags.length > 0 && (runOf(x) > s.run || (runOf(x) === s.run && !s.pickupDone)));
 }
 
 /** Whether a stop's food is in the vehicle: an earlier run, or this run once it's loaded. Reusables pickups need no load. */

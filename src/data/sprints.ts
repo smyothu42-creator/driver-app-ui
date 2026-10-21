@@ -10,7 +10,7 @@
 
 export type Area = "route" | "kitchen" | "dropoff" | "team" | "schedule" | "reusables" | "notifications" | "profile" | "unplanned";
 
-export const LIVE: ReadonlySet<Area> = new Set<Area>(["route", "kitchen", "dropoff", "schedule"]);
+export const LIVE: ReadonlySet<Area> = new Set<Area>(["route", "kitchen", "dropoff", "schedule", "reusables"]);
 
 export interface AreaInfo {
   feature: string;

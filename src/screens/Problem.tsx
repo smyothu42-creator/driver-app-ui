@@ -35,16 +35,21 @@ const KINDS: { group: string; items: { k: Kind; icon: typeof Clock; label: strin
 ];
 const ALL = KINDS.flatMap((g) => g.items);
 
-export function ProblemFlow({ id }: { id: string }) {
+/**
+ * `reusables`: opened from the collect screen with what's short (e.g. "1 tray lids"). Starts on "What's missing?"
+ * with those ticked, and reuses the collect photos (Oct 21 2026).
+ */
+export function ProblemFlow({ id, reusables }: { id: string; reusables?: string[] }) {
   const { s, a } = useApp();
   const t = useT();
   const stop = findStop(s, id);
-  const [step, setStep] = useState(0);
-  const [kind, setKind] = useState<Kind | null>(null);
+  const short = !!reusables?.length;
+  const [step, setStep] = useState(short ? 1 : 0);
+  const [kind, setKind] = useState<Kind | null>(short ? "short" : null);
   const [tried, setTried] = useState<Record<string, boolean>>({});
   const [lateBy, setLateBy] = useState<string | null>(null);
-  const [bags, setBags] = useState<Record<string, boolean>>({});
-  const [photos, setPhotos] = useState(0);
+  const [bags, setBags] = useState<Record<string, boolean>>(short ? Object.fromEntries(reusables!.map((x) => [x, true])) : {});
+  const [photos, setPhotos] = useState(short ? Math.min(3, s.stops[id].collectPhotos ?? 0) : 0);
   const [camera, setCamera] = useState(false);
 
   const item = ALL.find((x) => x.k === kind);
@@ -68,17 +73,17 @@ export function ProblemFlow({ id }: { id: string }) {
         : [];
   const needsBags = kind === "short" || kind === "wrong";
   // Bag counts aren't stored reliably (review Oct 14 2026), so the driver picks what's affected, not which bag.
-  const affected = [...(workOf(stop).includes("hot") ? ["Hot food"] : []), ...(workOf(stop).includes("cold") ? ["Cold food"] : []), "Drinks or sides", "Utensils or plates"];
+  const affected = short ? reusables! : [...(workOf(stop).includes("hot") ? ["Hot food"] : []), ...(workOf(stop).includes("cold") ? ["Cold food"] : []), "Drinks or sides", "Utensils or plates"];
   const step2Ok = kind === "late" ? !!lateBy : needsBags ? Object.values(bags).some(Boolean) : tries.length === 0 || Object.values(tried).some(Boolean);
 
-  const summary = [item?.label, lateBy && `about ${lateBy} late`, needsBags && Object.keys(bags).filter((k) => bags[k]).join(", ")].filter(Boolean).join(" · ");
+  const summary = [short ? "Reusables short" : item?.label, lateBy && `about ${lateBy} late`, needsBags && Object.keys(bags).filter((k) => bags[k]).join(", ")].filter(Boolean).join(" · ");
 
   const send = () => {
     a.reportIssue(id, summary, photos);
     setStep(3);
   };
 
-  const titles = ["What happened?", kind === "late" ? "How late?" : needsBags ? "What's affected?" : "Before you send", "Add a photo", "Sent to dispatch"];
+  const titles = ["What happened?", kind === "late" ? "How late?" : short ? "What's missing?" : needsBags ? "What's affected?" : "Before you send", "Add a photo", "Sent to dispatch"];
 
   if (camera)
     return (
@@ -96,7 +101,7 @@ export function ProblemFlow({ id }: { id: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <TopBar title={t("Report a problem")} subtitle={`Stop ${stop.seq} · ${stop.name}`} onBack={step > 0 && step < 3 ? () => setStep(step - 1) : a.back} />
+      <TopBar title={t("Report a problem")} subtitle={`Stop ${stop.seq} · ${stop.name}`} onBack={step > (short ? 1 : 0) && step < 3 ? () => setStep(step - 1) : a.back} />
 
       {/* Progress: 4 short bars, so the driver knows how much is left. */}
       <div className="flex gap-1.5 px-4 pt-3" aria-label={`Step ${step + 1} of 4`}>
@@ -183,7 +188,7 @@ export function ProblemFlow({ id }: { id: string }) {
 
         {step === 2 && (
           <>
-            <p className="text-[15px] text-muted-foreground">{item?.photo ? "Required. Show the food." : "Optional. A photo helps dispatch decide faster."}</p>
+            <p className="text-[15px] text-muted-foreground">{short ? "Your collect photo is attached. Add another if it helps." : item?.photo ? "Required. Show the food." : "Optional. A photo helps dispatch decide faster."}</p>
             {/* Same as the delivery photo: real camera, realistic thumbnails, X removes one. */}
             <div className="grid grid-cols-3 gap-2">
               {Array.from({ length: photos }).map((_, i) => (
@@ -217,7 +222,8 @@ export function ProblemFlow({ id }: { id: string }) {
             </IconChip>
             <p className="mt-3 text-[15px] font-semibold">{summary}</p>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              {s.online ? `${DISPATCH.name} has it on the order now.` : "Saved on your phone. It sends when signal is back."} Call so you can decide together what to do with the food.
+              {s.online ? `${DISPATCH.name} has it on the order now.` : "Saved on your phone. It sends when signal is back."}{" "}
+              {short ? "The dispatch lead decides whether to write it off or collect it on the next visit." : "Call so you can decide together what to do with the food."}
             </p>
           </div>
         )}

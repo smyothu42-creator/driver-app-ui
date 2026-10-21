@@ -381,6 +381,48 @@ export function TimeOffRequests() {
   );
 }
 
+/* ---------------- Reusables pickups: skip requests from the driver (Oct 21 2026) ---------------- */
+export function SkipRequests() {
+  const { s, a } = useApp();
+  const list = routeOf(s).filter((x) => x.kind === "pickup" && s.stops[x.id].skip);
+  return (
+    <section>
+      <SectionHead title="Pickup skip requests" />
+      {list.length === 0 ? (
+        <p className="rounded-xl bg-muted p-3 text-[13px] text-muted-foreground">No requests</p>
+      ) : (
+        <div className="divide-y divide-border rounded-2xl border border-border">
+          {list.map((x) => {
+            const skip = s.stops[x.id].skip!;
+            return (
+              <div key={x.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">
+                    {x.name} · {x.orderNo}
+                  </span>
+                  <span className="block truncate text-[13px] text-muted-foreground">{skip.reason}</span>
+                </span>
+                {skip.status === "pending" ? (
+                  <>
+                    <button onClick={() => a.decideSkip(x.id, true)} className="h-8 rounded-full bg-teal px-3 text-[13px] font-semibold text-white">
+                      Approve
+                    </button>
+                    <button onClick={() => a.decideSkip(x.id, false)} className="h-8 rounded-full border border-control px-3 text-[13px] font-semibold">
+                      Decline
+                    </button>
+                  </>
+                ) : (
+                  <Badge tone={skip.status === "approved" ? "success" : "danger"}>{skip.status === "approved" ? "Skipped" : "Declined"}</Badge>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ---------------- #77 driver request status, #18 reminders + 48-hour flag ---------------- */
 const REQ_BADGE = {
   pending: { tone: "warning", label: "Pending" },

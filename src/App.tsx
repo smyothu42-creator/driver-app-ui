@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Check, Headphones, Minimize2, Route as RouteIcon, Smartphone, UserRound } from "lucide-react";
 import { AppProvider, runStops, useApp, useT, type Tab } from "./store";
 import { PhoneFrame } from "./components/PhoneFrame";
@@ -9,7 +9,7 @@ import { PackageScreen, Pickup } from "./screens/Pickup";
 import { StopDetail } from "./screens/StopDetail";
 import { Navigate } from "./screens/Navigate";
 import { CameraScreen, ProofScreen } from "./screens/Proof";
-import { History, MapTab, Me, Tracking } from "./screens/Tabs";
+import { History, Me, RouteTab, Tracking } from "./screens/Tabs";
 import { RequestDetail, RequestsScreen, ScheduleTab } from "./screens/Schedule";
 import { Inbox } from "./screens/Inbox";
 import { ProblemFlow } from "./screens/Problem";
@@ -62,6 +62,29 @@ function Screens({ full }: { full: boolean }) {
   const { s, a } = useApp();
   const top = s.stack[s.stack.length - 1];
   const key = s.stack.map((x) => x.name + ("id" in x ? x.id : "")).join("/") + s.tab;
+  // Tab bar hides while scrolling down and comes back on any scroll up (LinkedIn-style). Always shown on a new screen.
+  const [barHidden, setBarHidden] = useState(false);
+  const lastY = useRef(0);
+  useEffect(() => {
+    setBarHidden(false);
+    lastY.current = 0;
+  }, [key]);
+  const lockUntil = useRef(0); // the bar's own resize moves scrollTop; ignore that so it can't bounce at the bottom
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const y = e.currentTarget.scrollTop;
+    const dy = y - lastY.current;
+    if (performance.now() < lockUntil.current) {
+      lastY.current = y;
+      return;
+    }
+    if (Math.abs(dy) < 6) return; // ignore jitter
+    const hide = dy > 0 && y > 40;
+    lastY.current = y;
+    if (hide !== barHidden) {
+      setBarHidden(hide);
+      lockUntil.current = performance.now() + 350;
+    }
+  };
 
   let body: React.ReactNode;
   switch (top.name) {
@@ -96,10 +119,10 @@ function Screens({ full }: { full: boolean }) {
       body = <Tracking />;
       break;
     case "scan":
-      body = <ScanScreen />;
+      body = <ScanScreen key={top.id ?? "any"} id={top.id} />;
       break;
     case "problem":
-      body = <ProblemFlow id={top.id} />;
+      body = <ProblemFlow id={top.id} reusables={top.reusables} />;
       break;
     case "request":
       body = <RequestDetail id={top.id} />;
@@ -120,7 +143,7 @@ function Screens({ full }: { full: boolean }) {
       body = <AvailabilityScreen />;
       break;
     case "tabs":
-      body = { today: <Today />, map: <MapTab />, schedule: <ScheduleTab />, history: <History />, me: <Me /> }[s.tab];
+      body = { today: <Today />, map: <RouteTab />, schedule: <ScheduleTab />, history: <History />, me: <Me /> }[s.tab];
       break;
   }
 
@@ -146,16 +169,28 @@ function Screens({ full }: { full: boolean }) {
 
   const isTabs = top.name === "tabs";
   const statusTop =
-    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || (s.tab === "schedule" && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" ? "mint" : (isTabs && s.tab === "history") || top.name === "navigate" ? "teal" : "light";
+    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || ((s.tab === "schedule" || s.tab === "map") && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" ? "mint" : top.name === "navigate" ? "mint" : isTabs && s.tab === "history" ? "teal" : "light";
 
   return (
-    <PhoneFrame top={statusTop} full={full}>
+    <PhoneFrame
+      top={statusTop}
+      full={full}
+      // Navigation is Google Maps: iOS shows "◀ SFK Driver" to switch back to the app (lands on Home).
+      backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }], tab: "today", sheet: null })) } : undefined}
+    >
       <div className="flex h-full flex-col">
         <OfflineBar />
-        <div key={key} className={cn("anim-screen relative flex-1", top.name === "navigate" || (isTabs && s.tab === "map") ? "overflow-hidden" : "overflow-y-auto")}>
+        <div key={key} onScroll={isTabs ? onScroll : undefined} className={cn("anim-screen relative flex-1", top.name === "navigate" ? "overflow-hidden" : "overflow-y-auto")}>
           {body}
         </div>
-        {isTabs && <TabBar />}
+        {isTabs && (
+          // Collapses its height (not just slides) so pinned buttons at the bottom of the screen follow it down.
+          <div className={cn("grid transition-[grid-template-rows] duration-300 ease-out", barHidden ? "grid-rows-[0fr]" : "grid-rows-[1fr]")}>
+            <div className="min-h-0 overflow-hidden">
+              <TabBar />
+            </div>
+          </div>
+        )}
       </div>
       <Sheets />
       <PushBanner />

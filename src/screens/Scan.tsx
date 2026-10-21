@@ -1,51 +1,60 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, ChevronRight, ClipboardList, ScanLine, Flashlight, FlashlightOff, Lock, RotateCw, Truck, X } from "lucide-react";
-import { findStop, runStops, useApp } from "../store";
-import { DRIVER, fmtTime, fmtWindow, workOf, type Stop } from "../data/route";
+import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Flashlight, FlashlightOff, Lock, Phone, RotateCw, ScanLine, Truck, X } from "lucide-react";
+import { findStop, slipsToday, useApp } from "../store";
+import { DISPATCH, DRIVER, fmtTime, fmtWindow, runOf, workOf, type Stop } from "../data/route";
 import { Button, cn } from "../components/ui";
 
 /* ------------------------------------------------------------------
- * #9 Scan the packing slip at the kitchen. Each scan opens that package's items to check
- * (PackageScreen); then the driver scans the next package, and slides "in transit" after the last.
+ * #9 Scan a packing slip at the kitchen (Oct 20 2026): any slip the driver delivers today, in any order.
+ * The sheet lists those orders; whichever slip is scanned opens that order (PackageScreen) to check.
+ * A slip that isn't on the driver's route stops here: "This isn't on your route. Discuss with dispatch."
  * Laid out like a native code scanner (Amazon Flex, DoorDash, iOS Camera): full-bleed camera,
- * dimmed frame around a clear scan window, and a bottom sheet with progress and the next slip.
+ * dimmed frame around a clear scan window, and a bottom sheet.
  * ------------------------------------------------------------------ */
-const WINDOW = 240; // px, scan window size
+const WINDOW = 250; // px, scan window size
+const WINDOW_TOP = "38%"; // middle of the screen above the bottom sheet
+/** Prototype stand-in for a slip from another driver's route, to show the check. */
+const OTHER_ROUTE_SLIP = { orderNo: "ORD-3188", name: "Bayside Dental", seq: 2 };
 
-export function ScanScreen() {
+export function ScanScreen({ id }: { id?: string }) {
   const { s, a } = useApp();
-  const route = runStops(s); // this kitchen pickup's packages
-  const next = route.find((x) => !s.scanned[x.id]);
-  const done = route.filter((x) => s.scanned[x.id]).length;
+  const slips = slipsToday(s);
+  const now = slips.filter((x) => runOf(x) === s.run);
+  // Opened from an order: the camera is reading that order's slip. Otherwise the next one not scanned yet.
+  const target = slips.find((x) => x.id === id) ?? now.find((x) => !s.scanned[x.id]);
+  const scannedNow = now.filter((x) => s.scanned[x.id]).length;
+  // A slip already scanned never needs the capture button again.
+  const next = target && !s.scanned[target.id] ? target : now.find((x) => !s.scanned[x.id]);
   const [torch, setTorch] = useState(false);
+  const [wrong, setWrong] = useState(false);
 
-  // Prototype: tapping the camera stands in for it reading the next slip's QR. No lock-on animation:
-  // go straight to that package's items and confirm with a pop-up there.
-  const scan = () => {
-    if (!next) return;
+  // Prototype: tapping the camera or an order stands in for the camera reading that slip's QR.
+  const scan = (x: Stop) => {
     navigator.vibrate?.(40); // haptic confirm on real phones
-    a.scanSlip(next.id);
-    a.jump((p) => ({ stack: [...p.stack.filter((x) => x.name !== "scan" && x.name !== "package"), { name: "package" as const, id: next.id }] }));
-    a.popup("Slip scanned", `${next.orderNo} · ${next.name}`);
+    a.scanSlip(x.id);
+    a.jump((p) => ({ stack: [...p.stack.filter((y) => y.name !== "scan" && y.name !== "package"), { name: "package" as const, id: x.id }] }));
+    a.popup("Slip scanned", `${x.orderNo} · ${x.name}`);
+  };
+  // Not on this driver's route: no way forward from here except dispatch.
+  const scanOther = () => {
+    navigator.vibrate?.([60, 80, 60]);
+    setWrong(true);
   };
 
-  const slip = next ?? route[route.length - 1];
-  const locked = false; // no lock-on animation: a scan goes straight to the package screen
+  const shownSlip: Stop | undefined = wrong ? { ...(slips[0] ?? findStop(s, "s1")), ...OTHER_ROUTE_SLIP } : (target ?? slips[0]);
 
   return (
     <div className="relative h-full overflow-hidden bg-black text-white">
       {/* Camera feed: the slip lying on a steel pass counter at the kitchen dock. */}
-      <button onClick={scan} aria-label="Simulate scanning the next packing slip" className="absolute inset-0 block cursor-default">
-        <CameraFeed slip={slip} torch={torch} />
+      <button onClick={() => !wrong && next && scan(next)} aria-label="Simulate scanning a packing slip" className="absolute inset-0 block cursor-default">
+        {shownSlip && <CameraFeed slip={shownSlip} torch={torch} />}
       </button>
 
       {/* Dim everything outside the scan window. */}
-      <div className="pointer-events-none absolute left-1/2 top-[40%] -translate-x-1/2 -translate-y-1/2" style={{ width: WINDOW, height: WINDOW }}>
+      <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: WINDOW, height: WINDOW, top: WINDOW_TOP }}>
         <div className="absolute inset-0 rounded-[28px] shadow-[0_0_0_2000px_rgba(0,0,0,0.58)]" />
-        <Corners locked={locked} />
-        {!locked && next && (
-          <div className="anim-scanline absolute inset-x-5 top-3 h-0.5 rounded-full bg-yellow shadow-[0_0_14px_3px_rgba(245,229,22,0.55)]" />
-        )}
+        <Corners locked={false} wrong={wrong} />
+        {!wrong && <div className="anim-scanline absolute inset-x-5 top-3 h-0.5 rounded-full bg-yellow shadow-[0_0_14px_3px_rgba(245,229,22,0.55)]" />}
       </div>
 
       {/* Top bar over the camera */}
@@ -59,53 +68,57 @@ export function ScanScreen() {
         </button>
       </div>
 
-      {/* Hint / result just under the window */}
-      <div className="pointer-events-none absolute inset-x-0 flex justify-center px-6" style={{ top: `calc(40% + ${WINDOW / 2 + 18}px)` }}>
-        <span className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold backdrop-blur-md">{next ? "Fit the QR code inside the frame" : "Every slip is scanned"}</span>
+      {/* Hint just under the window */}
+      <div className="pointer-events-none absolute inset-x-0 flex justify-center px-6" style={{ top: `calc(${WINDOW_TOP} + ${WINDOW / 2 + 14}px)` }}>
+        <span className={cn("rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-md", wrong ? "bg-danger text-white" : "bg-black/55")}>{wrong ? "Not on your route" : "Fit the QR code inside the frame"}</span>
       </div>
 
-      {/* Bottom sheet: progress, the slip expected next, and the way out */}
+      {/* Bottom sheet: today's orders to scan, or the "not on your route" stop. */}
       <div className="absolute inset-x-0 bottom-0 rounded-t-[28px] bg-card px-5 pb-8 pt-3 text-foreground shadow-raised">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-border-strong" />
-        {/* Progress: which package you're on, in words, over one thin bar. */}
-        {(() => {
-          const count = done + (locked ? 1 : 0);
-          return (
-            <div role="status" aria-label={`${count} of ${route.length} packages scanned`}>
-              <div className="nums text-[17px] font-semibold tracking-tight">
-                {next && !locked ? (
-                  <>
-                    Package {count + 1} <span className="text-muted-foreground">of {route.length}</span>
-                  </>
-                ) : (
-                  <span className="text-success">{count === route.length ? `All ${route.length} packages scanned` : `Package ${count} of ${route.length} scanned`}</span>
-                )}
-              </div>
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-success transition-[width] duration-500" style={{ width: `${(count / Math.max(1, route.length)) * 100}%` }} />
-              </div>
-            </div>
-          );
-        })()}
-
-        {next ? (
-          <>
-            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-teal-wash p-3">
-              <span className="nums grid size-10 shrink-0 place-items-center rounded-full bg-teal-deep text-sm font-bold text-white">{next.seq}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold">{next.name}</span>
-                <span className="nums block text-[13px] text-muted-foreground">{next.orderNo}</span>
+        {wrong ? (
+          <div role="alert">
+            <div className="flex items-start gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-danger-bg text-danger">
+                <AlertTriangle className="size-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[20px] font-bold leading-tight tracking-tight">This isn't on your route</span>
+                <span className="nums mt-1 block text-[15px] leading-snug text-muted-foreground">Slip {OTHER_ROUTE_SLIP.orderNo}. Discuss with dispatch before you load it.</span>
               </span>
             </div>
-            {/* Prototype: the button stands in for the camera reading the slip's QR. */}
-            <Button size="lg" className="mt-4 w-full" disabled={locked} onClick={scan}>
-              <ScanLine /> {locked ? "Scanned" : "Tap to scan"}
+            <Button size="lg" className="mt-5 w-full" onClick={() => a.toast(`Calling ${DISPATCH.name}…`)}>
+              <Phone /> Call dispatch
             </Button>
-          </>
+            <Button size="lg" variant="outline" className="mt-2 w-full" onClick={() => setWrong(false)}>
+              <ScanLine /> Scan another slip
+            </Button>
+          </div>
         ) : (
-          <Button size="lg" className="mt-4 w-full" onClick={a.openLoad}>
-            <ClipboardList /> Check what's inside
-          </Button>
+          <>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[17px] font-semibold tracking-tight">Today's packing slips</span>
+              <span className={cn("nums shrink-0 text-[13px] font-semibold", now.length && scannedNow === now.length ? "text-success" : "text-muted-foreground")}>
+                {scannedNow} of {now.length} scanned
+              </span>
+            </div>
+            {next ? (
+              // Prototype: stands in for the camera reading the slip's QR (tapping the camera does the same).
+              <Button size="lg" className="mt-4 w-full" onClick={() => scan(next)}>
+                <ScanLine /> Capture QR code
+              </Button>
+            ) : (
+              now.length > 0 && (
+                <Button size="lg" className="mt-4 w-full" onClick={a.openLoad}>
+                  <ClipboardList /> Check what's inside
+                </Button>
+              )
+            )}
+            {/* Prototype only: shows what happens when a slip from someone else's route is scanned. */}
+            <button onClick={scanOther} className="mt-3 w-full rounded-xl border border-dashed border-control py-2 text-center text-[13px] font-semibold text-muted-foreground">
+              Demo: scan a slip that's not on your route
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -113,8 +126,8 @@ export function ScanScreen() {
 }
 
 /** Corner brackets of the scan window; they turn green when a code is read. */
-function Corners({ locked }: { locked: boolean }) {
-  const c = cn("absolute size-12 border-[5px] transition-colors duration-200", locked ? "border-success" : "border-white");
+function Corners({ locked, wrong }: { locked: boolean; wrong?: boolean }) {
+  const c = cn("absolute size-12 border-[5px] transition-colors duration-200", wrong ? "border-danger" : locked ? "border-success" : "border-white");
   return (
     <div className={cn("absolute inset-0 transition-transform duration-200", locked && "scale-[0.94]")}>
       <span className={cn(c, "left-0 top-0 rounded-tl-[28px] border-b-0 border-r-0")} />
@@ -145,7 +158,7 @@ function CameraFeed({ slip, torch }: { slip: Stop; torch: boolean }) {
       <MealBox className="-right-16 bottom-[30%] rotate-[18deg] blur-[3px]" />
 
       {/* The catering box, seen from above at a slight tilt, with the packing slip label stuck on its lid. QR centred on the scan window. */}
-      <div className="absolute left-1/2 top-[40%]" style={{ transform: "translate(-50%, -50%) perspective(900px) rotateX(14deg) rotateZ(-5deg)" }}>
+      <div className="absolute left-1/2" style={{ top: WINDOW_TOP, transform: "translate(-50%, -50%) perspective(900px) rotateX(14deg) rotateZ(-5deg)" }}>
         <div className="relative h-[380px] w-[320px]">
           {/* front face of the box, in shade */}
           <div className="absolute inset-x-0 top-full h-[52px] rounded-b-[6px] shadow-[0_26px_40px_rgba(0,0,0,0.6)]" style={{ background: `${kraft}, linear-gradient(180deg, #8f6639, #7a5530)` }}>
@@ -175,7 +188,7 @@ function CameraFeed({ slip, torch }: { slip: Stop; torch: boolean }) {
       </div>
 
       {/* Overhead light falloff */}
-      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 38%, rgba(255,255,255,0.14), transparent 55%), radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%)" }} />
+      <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at 50% 27%, rgba(255,255,255,0.14), transparent 55%), radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%)" }} />
     </div>
   );
 }

@@ -44,7 +44,6 @@ export function ScheduleTab() {
   // Same-day ones are already on today's route, so they don't repeat here.
   // "Usual route" placeholders (#44/#70) are hidden for now.
   const accepted = s.requests.filter((r) => r.status === "accepted" && !r.orderId && !r.placeholder);
-  const declined = s.requests.filter((r) => r.status === "declined" && !r.orderId);
   const timeOff = Object.entries(s.availability).filter(([iso, d]) => iso > ROUTE_ISO && d.status === "unavailable");
 
   // Calendar days for a tab. Requests sit on their first day (a multi-day one says "3 days");
@@ -143,11 +142,6 @@ export function ScheduleTab() {
                 );
               })}
             </div>
-          )}
-          {view !== "answer" && declined.length > 0 && (
-            <p className="mt-2 px-1 text-[13px] text-muted-foreground">
-              Declined: {declined.map((r) => r.name).join(", ")}. Dispatch is reassigning {declined.length === 1 ? "it" : "them"}.
-            </p>
           )}
         </section>
 
@@ -394,10 +388,13 @@ export function RequestDetail({ id }: { id: string }) {
                         <span className="text-[15px] font-bold leading-snug text-foreground">{dayTitle(iso, label)}</span>
                         <span className="nums shrink-0 text-[15px] font-bold leading-snug text-foreground">~{fmtTime(r.time)}</span>
                       </div>
-                      <div className={cn("mt-0.5 flex items-center gap-1 text-[15px] leading-snug", fits ? "text-success" : "text-warning")}>
-                        {fits ? <CheckCircle2 className="size-3.5 shrink-0" /> : <AlertTriangle className="size-3.5 shrink-0" />}
-                        {fits ? "In your open hours" : `Outside your hours · ${fmtHours(s.openHours[weekdayOf(iso)])}`}
-                      </div>
+                      {/* Only flag a problem; a day inside your open hours needs no line. */}
+                      {!fits && (
+                        <div className="mt-0.5 flex items-center gap-1 text-[15px] leading-snug text-warning">
+                          <AlertTriangle className="size-3.5 shrink-0" />
+                          Outside your hours · {fmtHours(s.openHours[weekdayOf(iso)])}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );

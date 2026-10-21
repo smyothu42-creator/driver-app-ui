@@ -1,7 +1,7 @@
 import { AlertTriangle, ClipboardList, Maximize2, Ban, BadgeCheck, Building2, Camera, Car, Check, CheckCircle2, Clock, Headphones, MessageSquare, Navigation, Phone, Recycle, Timer } from "lucide-react";
 import { isOn } from "../data/sprints";
-import { crewOn, findStop, isLoaded, myAssignment, needsKitchenRun, useApp, useT, vehicleOf } from "../store";
-import { VEHICLES, fmtTime, fmtWindow, type Contact, type Stop } from "../data/route";
+import { crewOn, findStop, isLoaded, myAssignment, needsKitchenRun, pickupDelivery, pickupsAt, useApp, useT, vehicleOf } from "../store";
+import { VEHICLES, fmtTime, fmtWindow, windowStatus, type Contact, type Stop } from "../data/route";
 import { Download } from "lucide-react";
 import { ActionBar, Button, Card, cn, IconChip, RoleBadge, StopAvatar, TopBar, WorkTags, SfkMark } from "../components/ui";
 import { PhotoThumb } from "./Proof";
@@ -18,12 +18,13 @@ export function StopDetail({ id }: { id: string }) {
   const change = s.changes[id];
   const onSite = st.status === "arrived" || st.status === "delivered";
   const pickup = stop.kind === "pickup";
+  const skipped = cancelled && st.skip?.status === "approved"; // a reusables pickup dispatch agreed to skip
   const vehicle = VEHICLES.find((v) => v.id === vehicleOf(s, id))!;
 
   return (
     <div className="flex h-full flex-col">
       <TopBar
-        title={`${pickup ? t("Reusables pickup") : t("Delivery")}${cancelled ? " · cancelled" : ""}`}
+        title={`${pickup ? t("Reusables pickup") : t("Delivery")}${skipped ? " · skipped" : cancelled ? " · cancelled" : ""}`}
         onBack={a.back}
         tone="white"
       />
@@ -74,7 +75,8 @@ export function StopDetail({ id }: { id: string }) {
         </div>
 
         {/* #15 / #31: cancellations and time changes from dispatch. */}
-        {cancelled && (
+        {/* A skipped pickup says so in its own status box below, not as a cancellation. */}
+        {cancelled && !skipped && (
           <div className="mx-4 flex gap-3 rounded-2xl border-2 border-danger-border bg-danger-bg p-4 text-danger">
             <Ban className="mt-0.5 size-5 shrink-0" />
             <span className="text-[15px]">
@@ -100,6 +102,9 @@ export function StopDetail({ id }: { id: string }) {
             </span>
           </div>
         )}
+
+        {/* Reusables pickup: its window, where it's picked up, and any skip request (Oct 21 2026). */}
+        {isOn("reusables") && pickup && <PickupStatus stop={stop} />}
 
         {isOn("team") && <TeamCard stopId={id} onSite={onSite} />}
 
@@ -160,7 +165,7 @@ export function StopDetail({ id }: { id: string }) {
           <section className="px-4">
             <SectionTitle
               action={
-                <button onClick={() => a.toast("Packing list saved to Files")} className="flex h-10 items-center gap-1.5 rounded-full border border-control bg-card px-3.5 text-[13px] font-semibold text-teal">
+                <button onClick={() => a.openSheet({ name: "packingList", id })} className="flex h-10 items-center gap-1.5 rounded-full border border-control bg-card px-3.5 text-[13px] font-semibold text-teal">
                   <Download className="size-4" /> Packing list
                 </button>
               }
@@ -199,6 +204,36 @@ export function StopDetail({ id }: { id: string }) {
                 {st.collected ? "Edit" : "Count"}
               </Button>
             </Card>
+          </section>
+        )}
+        {/* Reusables pickups at this address ride along with this delivery: count them here while on site. */}
+        {isOn("reusables") && !pickup && !cancelled && pickupsAt(s, stop).length > 0 && (
+          <section className="px-4">
+            <SectionTitle>Also pick up here</SectionTitle>
+            <Card className="divide-y divide-border">
+              {pickupsAt(s, stop).map((x) => {
+                const n = (x.reusables ?? []).reduce((m, r) => m + r.expected, 0);
+                const skip = s.stops[x.id].skip;
+                return (
+                  <div key={x.id} className="flex items-center gap-3 p-4">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-wash text-teal">
+                      <Recycle className="size-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[15px] font-semibold">Reusables · {x.orderNo}</span>
+                      <span className="nums block text-[13px] text-muted-foreground">
+                        {n} items · window {fmtWindow(x.windowStart, x.windowEnd)}
+                        {skip?.status === "pending" && " · skip requested"}
+                      </span>
+                    </span>
+                    <Button size="sm" variant="teal" disabled={!onSite} onClick={() => a.push({ name: "collect", id: x.id })}>
+                      Count
+                    </Button>
+                  </div>
+                );
+              })}
+            </Card>
+            <p className="mt-2 px-1 text-[13px] text-muted-foreground">Not collected here? It stays on your route as its own pickup.</p>
           </section>
         )}
         {/* Bottom breathing room when the instructions panel isn't the last, full-height block. */}
@@ -421,7 +456,8 @@ function StopActions({ stop }: { stop: Stop }) {
         <Button size="lg" className="w-full" onClick={() => a.push({ name: "collect", id: stop.id })}>
           <Recycle /> {t("Collect reusables")}
         </Button>
-      {isOn("dropoff") && <ProblemLink id={stop.id} />}
+        <SkipLink stop={stop} />
+        {isOn("dropoff") && <ProblemLink id={stop.id} />}
       </ActionBar>
     );
   }
@@ -447,6 +483,17 @@ function StopActions({ stop }: { stop: Stop }) {
       </ActionBar>
     );
   }
+  // A pickup riding along with a delivery isn't driven to on its own: it's counted on that delivery's screen.
+  const along = isOn("reusables") ? pickupDelivery(s, stop) : undefined;
+  if (along)
+    return (
+      <ActionBar>
+        <Button size="lg" className="w-full" onClick={() => a.jump((p) => ({ stack: [...p.stack.filter((x) => !(x.name === "stop" && x.id === stop.id)), { name: "stop" as const, id: along.id }] }))}>
+          <Recycle /> Go to {along.name} delivery
+        </Button>
+        <SkipLink stop={stop} />
+      </ActionBar>
+    );
   return (
     <ActionBar>
       <Button size="lg" className="w-full" onClick={() => a.startNav(stop.id)}>
@@ -457,8 +504,69 @@ function StopActions({ stop }: { stop: Stop }) {
           {t("I've already arrived")}
         </Button>
       )}
+      <SkipLink stop={stop} />
       {isOn("dropoff") && <ProblemLink id={stop.id} />}
     </ActionBar>
+  );
+}
+
+/** Reusables pickup: "Ask dispatch to skip" until a request is sent. */
+function SkipLink({ stop }: { stop: Stop }) {
+  const { s, a } = useApp();
+  if (!isOn("reusables") || stop.kind !== "pickup" || s.stops[stop.id].skip) return null;
+  return (
+    <button onClick={() => a.openSheet({ name: "skip", id: stop.id })} className="w-full py-1 text-center text-sm font-semibold text-teal">
+      Ask dispatch to skip this pickup
+    </button>
+  );
+}
+
+/**
+ * Reusables pickup status, under the header: the pickup window (open / closing / missed), whether it's picked up
+ * during a delivery at the same address, and where a skip request stands.
+ */
+function PickupStatus({ stop }: { stop: Stop }) {
+  const { s } = useApp();
+  const st = s.stops[stop.id];
+  const done = st.status === "delivered" || st.status === "cancelled";
+  const w = windowStatus(stop, s.clock);
+  const along = pickupDelivery(s, stop);
+  const tone = w.state === "missed" ? "border-danger-border bg-danger-bg text-danger" : w.state === "closing" ? "border-warning-border bg-warning-bg text-warning" : "border-teal-soft bg-teal-wash text-teal-deep";
+  return (
+    <div className="mx-4 space-y-2">
+      {!done && (
+        <div className={cn("flex gap-3 rounded-2xl border p-3.5", tone)}>
+          <Clock className="mt-0.5 size-5 shrink-0" />
+          <span className="nums text-[15px]">
+            <b className="font-semibold">Pickup window {fmtWindow(stop.windowStart, stop.windowEnd)}</b>
+            <span className="block text-[13px]">{w.text}</span>
+          </span>
+        </div>
+      )}
+      {along && (
+        <div className="flex gap-3 rounded-2xl border border-border bg-card p-3.5">
+          <Recycle className="mt-0.5 size-5 shrink-0 text-teal" />
+          <span className="text-[15px]">
+            <b className="font-semibold">Pick up during your delivery to {along.name}</b>
+            <span className="block text-[13px] text-muted-foreground">Same address, stop {along.seq}. Count it there with the delivery.</span>
+          </span>
+        </div>
+      )}
+      {st.skip && (
+        <div className={cn("flex gap-3 rounded-2xl border p-3.5", st.skip.status === "declined" ? "border-warning-border bg-warning-bg text-warning" : "border-border bg-muted")}>
+          <Ban className="mt-0.5 size-5 shrink-0" />
+          <span className="nums text-[15px]">
+            <b className="font-semibold">
+              {st.skip.status === "pending" ? "Skip requested · waiting for dispatch" : st.skip.status === "approved" ? `Skipped · approved by dispatch ${fmtTime(st.skip.decidedAt!)}` : "Dispatch needs this pickup today"}
+            </b>
+            <span className="block text-[13px] opacity-80">
+              {st.skip.reason}
+              {st.skip.status === "pending" && ". Keep it on your route until they reply."}
+            </span>
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
 

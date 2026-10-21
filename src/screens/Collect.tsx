@@ -5,8 +5,8 @@ import { ActionBar, Button, Card, cn, SectionLabel, SlideToConfirm, TopBar } fro
 
 /* ------------------------------------------------------------------
  * Reusable pickups (#48–53, #83).
- *   The expected count comes with the order. The driver records what was actually collected,
- *   takes a photo, and anything short goes to the dispatch lead (write off or pending).
+ *   The expected count comes with the order. The driver records what was actually collected and takes a photo.
+ *   Anything short opens the problem flow next, already filled in with what's missing (Oct 21 2026).
  *   Counts start at 0 so the driver actually counts; "Matches expected" fills them in one tap.
  *   The packing list can be downloaded on the phone.
  * Used for a pickup stop (completes the stop) and for totes collected with a delivery (#50).
@@ -42,8 +42,8 @@ export function CollectScreen({ id }: { id: string }) {
             <span className="block font-semibold">Packing list</span>
             <span className="nums block text-2xs text-muted-foreground">{expected} items expected</span>
           </span>
-          <Button size="sm" variant="outline" onClick={() => a.toast("Packing list saved to Files")}>
-            <Download /> Download
+          <Button size="sm" variant="outline" onClick={() => a.openSheet({ name: "packingList", id })}>
+            <Download /> Open
           </Button>
         </Card>
 
@@ -111,7 +111,7 @@ export function CollectScreen({ id }: { id: string }) {
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
             <span className="text-[13px]">
               <b className="block text-[15px] font-semibold">Short: {shortList.join(", ")}</b>
-              The dispatch lead decides whether to write it off or keep it pending for the next visit.
+              After you finish, you'll report what's missing so dispatch can follow up.
             </span>
           </div>
         )}
@@ -129,7 +129,11 @@ export function CollectScreen({ id }: { id: string }) {
         ) : (
           <SlideToConfirm
             label={pickup ? `Slide · collected ${total} of ${expected}` : `Slide · ${total} of ${expected} collected`}
-            onConfirm={() => a.collectReusables(id, counts, photos, shortList.length ? `Short: ${shortList.join(", ")}` : null)}
+            onConfirm={() => {
+              a.collectReusables(id, counts, photos);
+              // Missing items go straight into the problem flow, pre-filled with what's short.
+              if (shortList.length) a.jump((p) => ({ sheet: null, stack: [...p.stack.filter((x) => x.name !== "collect"), { name: "problem" as const, id, reusables: shortList }] }));
+            }}
           />
         )}
       </ActionBar>

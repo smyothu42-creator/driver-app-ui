@@ -380,7 +380,8 @@ const AVATAR_TONES = [
   ["#FBF3D3", "#7A5A0E"],
   ["#E2F1F1", "#0F5E63"],
 ] as const;
-export function StopAvatar({ stop, className }: { stop: Pick<Stop, "name" | "customerType" | "photo">; className?: string }) {
+/** `square`: people get the same rounded square as companies (e.g. in a list mixing both). */
+export function StopAvatar({ stop, className, square }: { stop: Pick<Stop, "name" | "customerType" | "photo">; className?: string; square?: boolean }) {
   const person = stop.customerType === "individual";
   const words = stop.name.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean);
   const initials = (person ? words.slice(0, 2).map((w) => w[0]) : words.length > 1 ? [words[0][0], words[1][0]] : [words[0][0], words[0][1]]).join("").toUpperCase();
@@ -388,8 +389,8 @@ export function StopAvatar({ stop, className }: { stop: Pick<Stop, "name" | "cus
   for (const ch of stop.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const [bg, fg] = AVATAR_TONES[h % AVATAR_TONES.length];
   if (person && stop.photo)
-    return <img src={stop.photo} alt="" aria-hidden className={cn("block size-12 shrink-0 rounded-full object-cover", className)} />;
-  if (person) return <PersonPhoto seed={h} className={className} />;
+    return <img src={stop.photo} alt="" aria-hidden className={cn("block size-12 shrink-0 object-cover", square ? "rounded-[14px]" : "rounded-full", className)} />;
+  if (person) return <PersonPhoto seed={h} className={className} square={square} />;
   return (
     <span
       aria-hidden
@@ -402,7 +403,7 @@ export function StopAvatar({ stop, className }: { stop: Pick<Stop, "name" | "cus
 }
 
 /** Mock profile photo for an individual customer: a flat portrait (skin, hair, top) varied by a seed. */
-function PersonPhoto({ seed, className }: { seed: number; className?: string }) {
+function PersonPhoto({ seed, className, square }: { seed: number; className?: string; square?: boolean }) {
   const skins = ["#F1C7A5", "#D9A27C", "#B47A55", "#8A5638", "#EBC1A0"];
   const hairs = ["#2B211C", "#4A3326", "#1E1B1A", "#7A4E2C", "#3A2A20"];
   const tops = ["#2F6A6C", "#3E5C8A", "#8A4B3A", "#5B6B3A", "#6E3C86"];
@@ -411,7 +412,7 @@ function PersonPhoto({ seed, className }: { seed: number; className?: string }) 
   const skin = pick(skins, 1);
   const hair = pick(hairs, 3);
   return (
-    <span aria-hidden className={cn("block size-12 shrink-0 overflow-hidden rounded-full", className)} style={{ background: pick(backs, 5) }}>
+    <span aria-hidden className={cn("block size-12 shrink-0 overflow-hidden", square ? "rounded-[14px]" : "rounded-full", className)} style={{ background: pick(backs, 5) }}>
       <svg viewBox="0 0 48 48" className="block size-full">
         {/* shoulders / top */}
         <path d="M6 48 C7 37 15 33 24 33 C33 33 41 37 42 48 Z" fill={pick(tops, 7)} />

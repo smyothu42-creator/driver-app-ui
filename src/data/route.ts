@@ -19,11 +19,16 @@ export type StopStatus = "queued" | "en_route" | "arrived" | "delivered" | "issu
 export type Temp = "HOT" | "COLD";
 export type CustomerType = "corporate" | "family" | "individual";
 
+/**
+ * One thing to check off at the kitchen. Hot / cold isn't known per item, only per order (packaging type),
+ * so items carry no temperature. Individual-meal orders list one row per person's meal; family style lists
+ * each main with the sides that come with it (`group`).
+ */
 export interface Bag {
   id: string;
   label: string;
-  temp: Temp;
   detail: string;
+  group?: string;
 }
 
 export interface Contact {
@@ -59,9 +64,10 @@ export interface Stop {
   windowEnd: number;
   guestReadyTime?: number; // family style: food must be set up by this time
   meals: number;
+  /** Order.packagingType, e.g. "Reusable · Hot". Hot / cold is read from this, for the whole order. */
   packaging: string;
-  /** What's in this order's package: shown as items to check after its QR is scanned, and used for hot / cold.
-   * Never shown as a count (review Oct 14 2026: bag and container counts aren't stored reliably). */
+  /** What's in this order's package, checked item by item after its packing slip is scanned.
+   * Never shown as a bag count (review Oct 14 2026: bag and container counts aren't stored reliably). */
   bags: Bag[];
   buildingNotes: string; // Address.instructions (saved once, reused every order)
   hasBuildingPhoto: boolean; // Address.instructionsFileUrl
@@ -80,7 +86,7 @@ export interface Stop {
   /** Unassigned orders only: why dispatch opened it for claiming (shown to drivers). */
   openReason?: string;
   at: LngLat; // real coordinates (src/data/geo.ts)
-  driveMins: number; // drive time from previous stop
+  driveMins: number; // drive time from previous stop (or the kitchen), midday traffic
   miles: number;
 }
 
@@ -102,10 +108,11 @@ export const SFK_TEAM: (Contact & { tag: string })[] = [
   { name: "Renee Park", role: "Operations manager · SFK", phone: "(415) 555-0120", tag: "Operations" },
 ];
 
+/** SFK's real kitchen: https://maps.app.goo.gl/4Zp2bH6YPgz64PHm6 (pin 37.75088, -122.38814). */
 export const KITCHEN = {
   name: "Superfine Kitchen",
-  addressLine1: "1650 Mission St",
-  city: "San Francisco, CA 94103",
+  addressLine1: "1661 Tennessee St",
+  city: "San Francisco, CA 94107",
   readyAt: 11 * 60 + 12, // Order.dispatchReadyAt from the kitchen screen (first pickup)
   dock: "Dispatch dock · Bay 2",
   at: PLACES.k,
@@ -123,18 +130,56 @@ export const runOf = (stop: Stop) => stop.run ?? 1;
 /** When the kitchen has each pickup ready (Order.dispatchReadyAt per run). */
 export const KITCHEN_READY: Record<number, number> = { 1: 11 * 60 + 12, 2: 12 * 60 + 40 };
 
+/** Hot / cold for a whole order, from its packaging type (Oct 20 2026: no item-level hot / cold data). */
+export function tempsOf(stop: Stop): Temp[] {
+  const p = stop.packaging.toLowerCase();
+  return (["HOT", "COLD"] as const).filter((t) => p.includes(t.toLowerCase()));
+}
 /** The route's hot order. Only one per vehicle load, and it's delivered first. */
 export function hotStop(route: Stop[]): Stop | undefined {
-  return route.find((x) => x.bags.some((b) => b.temp === "HOT"));
+  return route.find((x) => x.bags.length > 0 && tempsOf(x).includes("HOT"));
 }
 export function workOf(stop: Stop): Work[] {
   const w: Work[] = [];
-  if (stop.bags.some((b) => b.temp === "HOT")) w.push("hot");
-  if (stop.bags.some((b) => b.temp === "COLD")) w.push("cold");
+  if (stop.bags.length && tempsOf(stop).includes("HOT")) w.push("hot");
+  if (stop.bags.length && tempsOf(stop).includes("COLD")) w.push("cold");
   // Reusables collection is hidden until the Reusable pickup sprint (src/data/sprints.ts).
   if (isOn("reusables") && (stop.kind === "pickup" || stop.reusables?.length)) w.push("reusables");
   return w;
 }
+
+/**
+ * Neptune's Daily Lunch is 24 individual orders, one name-labelled meal each. The driver checks them by order
+ * (person), not by name range: a big office can mean 50–100 rows, so the package screen has search and "to check".
+ */
+const NEPTUNE_MEALS: Bag[] = (
+  [
+  ["Aaron Bell", "Lemon chicken rice bowl"],
+  ["Alicia Gomez", "Veggie curry"],
+  ["Ben Carter", "Lemon chicken rice bowl"],
+  ["Chloe Park", "Veggie curry · no cilantro"],
+  ["Dev Patel", "Tofu rice bowl"],
+  ["Emma Ross", "Lemon chicken rice bowl"],
+  ["Farah Khan", "Veggie curry"],
+  ["Gabe Silva", "Lemon chicken rice bowl"],
+  ["Hana Sato", "Tofu rice bowl"],
+  ["Isaac Moore", "Lemon chicken rice bowl"],
+  ["Jade Wu", "Veggie curry"],
+  ["Kevin O'Brien", "Lemon chicken rice bowl"],
+  ["Lina Haddad", "Tofu rice bowl · gluten-free"],
+  ["Marco Rossi", "Lemon chicken rice bowl"],
+  ["Nina Petrova", "Veggie curry"],
+  ["Omar Ali", "Lemon chicken rice bowl · halal"],
+  ["Priya Nair", "Tofu rice bowl"],
+  ["Quinn Taylor", "Veggie curry"],
+  ["Rosa Diaz", "Lemon chicken rice bowl"],
+  ["Sam Lee", "Veggie curry"],
+  ["Tara Singh", "Tofu rice bowl"],
+  ["Uma Rao", "Veggie curry · nut-free"],
+  ["Victor Chen", "Lemon chicken rice bowl"],
+  ["Will Turner", "Veggie curry"],
+  ] as const
+).map(([label, detail], i) => ({ id: `s1-m${i + 1}`, label, detail }));
 
 /**
  * Delivery flow (SFK, Oct 15 2026):
@@ -159,26 +204,21 @@ export const STOPS: Stop[] = [
     windowEnd: 12 * 60,
     meals: 24,
     packaging: "Reusable · Hot",
-    bags: [
-      { id: "b1", label: "Hot mains · names A–F", temp: "HOT", detail: "Lemon chicken, rice bowls" },
-      { id: "b2", label: "Hot mains · names G–M", temp: "HOT", detail: "Lemon chicken, veggie curry" },
-      { id: "b3", label: "Hot mains · names N–Z", temp: "HOT", detail: "Veggie curry, rice bowls" },
-      { id: "b4", label: "Salads", temp: "COLD", detail: "Name-labelled, with dressings" },
-    ],
+    bags: NEPTUNE_MEALS,
     buildingNotes:
       "Check in at lobby security with your SFK badge. Use freight elevator B (left of the loading dock on Natoma St).",
     hasBuildingPhoto: true,
-    dropoffNotes: "Place meals on the long pantry counter, sorted by name label. Hot bags on the left.",
+    dropoffNotes: "Place meals on the long pantry counter, sorted by name label.",
     returns: "Collect yesterday's empty totes (by the pantry door).",
     reusables: [{ id: "s1-tote", label: "Empty reusable totes", expected: 3 }],
-    setup: ["Lay meals on the pantry counter by name label", "Hot bags on the left, cold on the right", "Take the lids off the hot trays"],
+    setup: ["Lay meals on the pantry counter by name label", "Take the lids off the hot trays"],
     setupSource: "company",
     parking: "Loading dock on Natoma St, 20 min max",
     contact: { name: "Priya Nair", role: "Office manager · Neptune Corp", phone: "(415) 555-0192" },
     backupContact: { name: "Front desk", role: "Neptune Corp reception", phone: "(415) 555-0190" },
     at: PLACES.s1,
-    driveMins: 9,
-    miles: 2.9,
+    driveMins: 14,
+    miles: 3.7,
   },
   {
     id: "s2",
@@ -196,10 +236,14 @@ export const STOPS: Stop[] = [
     meals: 20,
     packaging: "Compostable · Cold",
     bags: [
-      { id: "b5", label: "Sandwich platters", temp: "COLD", detail: "Turkey, caprese, hummus wrap" },
-      { id: "b6", label: "Grain bowls & salads", temp: "COLD", detail: "Farro bowl, Caesar, fruit" },
-      { id: "b8", label: "Dressings & desserts", temp: "COLD", detail: "Cookies, brownies" },
-      { id: "b7", label: "Plates, napkins & utensils", temp: "COLD", detail: "For the setup" },
+      { id: "b5", group: "Turkey & caprese sandwiches", label: "Sandwich platter", detail: "Main · serves 12" },
+      { id: "b6", group: "Turkey & caprese sandwiches", label: "Caesar salad", detail: "Side · dressing on the side" },
+      { id: "b7", group: "Turkey & caprese sandwiches", label: "Kettle chips", detail: "Side" },
+      { id: "b8", group: "Hummus veggie wraps", label: "Wrap platter", detail: "Main · serves 8 · vegan" },
+      { id: "b9", group: "Hummus veggie wraps", label: "Farro grain bowl", detail: "Side" },
+      { id: "b10", group: "Hummus veggie wraps", label: "Fruit salad", detail: "Side" },
+      { id: "b11", group: "For everyone", label: "Cookies & brownies", detail: "Dessert" },
+      { id: "b19", group: "For everyone", label: "Plates, napkins & utensils", detail: "For the setup" },
     ],
     buildingNotes: "Street parking is tight. 15-min loading zone in front of the building on King St.",
     hasBuildingPhoto: false,
@@ -211,7 +255,7 @@ export const STOPS: Stop[] = [
     contact: { name: "Jordan Lee", role: "Event host · Mirendil Inc", phone: "(415) 555-0177" },
     backupContact: { name: "Casey Moore", role: "Office manager · Mirendil Inc", phone: "(415) 555-0171" },
     at: PLACES.s2,
-    driveMins: 11,
+    driveMins: 6,
     miles: 1.1,
   },
   {
@@ -230,7 +274,10 @@ export const STOPS: Stop[] = [
     windowEnd: 13 * 60 + 30,
     meals: 2,
     packaging: "Disposable · Cold",
-    bags: [{ id: "b9", label: "Meals for D. Kim", temp: "COLD", detail: "Poke bowl, side salad" }],
+    bags: [
+      { id: "b20", label: "Poke bowl", detail: "Daniel Kim" },
+      { id: "b21", label: "Side salad", detail: "Daniel Kim" },
+    ],
     buildingNotes: "Concierge desk in lobby, open 7am–10pm.",
     hasBuildingPhoto: false,
     dropoffNotes: "Leave with the concierge if I don't answer. Text when you arrive please!",
@@ -238,8 +285,8 @@ export const STOPS: Stop[] = [
     contact: { name: "Daniel Kim", role: "Customer", phone: "(415) 555-0133" },
     backupContact: { name: "Concierge", role: "201 Folsom lobby", phone: "(415) 555-0130" },
     at: PLACES.s3,
-    driveMins: 7,
-    miles: 0.8,
+    driveMins: 12, // from the kitchen: it's the first stop of pickup 2
+    miles: 3.4,
   },
   {
     id: "p1",
@@ -269,9 +316,51 @@ export const STOPS: Stop[] = [
     contact: { name: "Nadia Flores", role: "Office manager · Brightline Health", phone: "(415) 555-0155" },
     at: PLACES.p1,
     driveMins: 5,
-    miles: 0.7,
+    miles: 0.9,
+  },
+  // Reusables from Mirendil's last family-style lunch. Same address as today's Mirendil delivery (stop 2), so it's
+  // picked up during that delivery; if it isn't, it stays on the route as its own stop (Oct 21 2026).
+  {
+    id: "p2",
+    seq: 5,
+    kind: "pickup",
+    orderNo: "PU-2211",
+    customerType: "family",
+    orderType: "Reusables pickup",
+    name: "Mirendil Inc",
+    addressLine1: "88 King St",
+    addressLine2: "Suite 400 · Conf. room 4B",
+    city: "San Francisco, CA 94107",
+    windowStart: 12 * 60,
+    windowEnd: 15 * 60,
+    meals: 0,
+    packaging: "Reusables",
+    bags: [],
+    buildingNotes: "Street parking is tight. 15-min loading zone in front of the building on King St.",
+    hasBuildingPhoto: false,
+    dropoffNotes: "Platters and chafing dishes from Friday's lunch are in the cupboard in conference room 4B.",
+    reusables: [
+      { id: "p2-platter", label: "Serving platters", expected: 3 },
+      { id: "p2-chafer", label: "Chafing dish sets", expected: 2 },
+    ],
+    parking: "15-min loading zone in front, on King St",
+    contact: { name: "Casey Moore", role: "Office manager · Mirendil Inc", phone: "(415) 555-0171" },
+    at: PLACES.s2,
+    driveMins: 7,
+    miles: 1.4,
   },
 ];
+
+/** Same street address (a pickup there can ride along with the next delivery). */
+export const sameAddress = (a: Pick<Stop, "addressLine1">, b: Pick<Stop, "addressLine1">) => a.addressLine1.trim().toLowerCase() === b.addressLine1.trim().toLowerCase();
+
+/** Where a stop's window stands right now: not open yet, open, about to close (15 min), or missed. */
+export function windowStatus(stop: Pick<Stop, "windowStart" | "windowEnd">, clock: number): { state: "upcoming" | "open" | "closing" | "missed"; text: string } {
+  if (clock < stop.windowStart) return { state: "upcoming", text: `Opens ${fmtTime(stop.windowStart)}` };
+  if (clock > stop.windowEnd) return { state: "missed", text: `Window missed · closed ${fmtTime(stop.windowEnd)}` };
+  const left = stop.windowEnd - clock;
+  return left <= 15 ? { state: "closing", text: `Closes in ${left} min` } : { state: "open", text: `Open · ${left} min left` };
+}
 
 /* ---------------- Staffing (US-814 multi-driver, US-815 role labels) ---------------- */
 
@@ -334,18 +423,15 @@ export const OPEN_POOL: Stop[] = [
     windowEnd: 13 * 60 + 15,
     meals: 16,
     packaging: "Reusable · Hot",
-    bags: [
-      { id: "b12", label: "Bag 1 of 2", temp: "HOT", detail: "Mains A–K · 8 meals" },
-      { id: "b13", label: "Bag 2 of 2", temp: "HOT", detail: "Mains L–Z · 8 meals" },
-    ],
+    bags: [{ id: "b12", label: "16 individual meals", detail: "Name-labelled · chicken and tofu bowls" }],
     buildingNotes: "Loading zone on Terry A Francois Blvd. Front desk will buzz you up.",
     hasBuildingPhoto: false,
     dropoffNotes: "Leave on the kitchen counter by the windows.",
     contact: { name: "Mei Tan", role: "Office manager · Lumen Studio", phone: "(415) 555-0118" },
     openReason: "Original driver called in sick",
     at: PLACES.o1,
-    driveMins: 6,
-    miles: 2.1,
+    driveMins: 8,
+    miles: 1.5,
   },
   {
     id: "o2",
@@ -361,18 +447,15 @@ export const OPEN_POOL: Stop[] = [
     windowEnd: 13 * 60 + 30,
     meals: 6,
     packaging: "Disposable · Hot & Cold",
-    bags: [
-      { id: "b14", label: "Bag 1 of 2", temp: "HOT", detail: "Mains · 6 meals" },
-      { id: "b15", label: "Bag 2 of 2", temp: "COLD", detail: "Salads & drinks" },
-    ],
+    bags: [{ id: "b14", label: "6 individual meals", detail: "Name-labelled · mains, salads & drinks" }],
     buildingNotes: "Sign in at the lobby desk. Use the main elevators.",
     hasBuildingPhoto: false,
     dropoffNotes: "Late add-on. Hand to reception, they'll call the team.",
     contact: { name: "Ravi Shah", role: "Team lead · Pinecrest Health", phone: "(415) 555-0124" },
     openReason: "Late order after cutoff",
     at: PLACES.o2,
-    driveMins: 7,
-    miles: 2.9,
+    driveMins: 12,
+    miles: 3.4,
   },
   {
     id: "o3",
@@ -388,15 +471,15 @@ export const OPEN_POOL: Stop[] = [
     windowEnd: 13 * 60,
     meals: 10,
     packaging: "Reusable · Hot",
-    bags: [{ id: "b16", label: "Bag 1 of 1", temp: "HOT", detail: "Mains · 10 meals" }],
+    bags: [{ id: "b16", label: "10 individual meals", detail: "Name-labelled · mains" }],
     buildingNotes: "Deliveries through the north entrance on the Embarcadero side.",
     hasBuildingPhoto: false,
     dropoffNotes: "Ask for Leo at the Suite 300 front desk.",
     contact: { name: "Leo Grant", role: "Operations · Harbor & Co", phone: "(415) 555-0127" },
     openReason: "Unassigned at dispatch",
     at: PLACES.o3,
-    driveMins: 8,
-    miles: 3.2,
+    driveMins: 13,
+    miles: 3.7,
   },
   {
     id: "o4",
@@ -412,15 +495,15 @@ export const OPEN_POOL: Stop[] = [
     windowEnd: 13 * 60 + 15,
     meals: 3,
     packaging: "Disposable · Cold",
-    bags: [{ id: "b18", label: "Bag 1 of 1", temp: "HOT", detail: "3 meals · name label C. Nguyen" }],
+    bags: [{ id: "b18", label: "3 meals", detail: "Name label C. Nguyen" }],
     buildingNotes: "Front desk signs visitors in. Take the food up to the unit.",
     hasBuildingPhoto: false,
     dropoffNotes: "Baby sleeping, please knock softly. Don't ring the bell.",
     contact: { name: "Chris Nguyen", role: "Customer", phone: "(415) 555-0186" },
     openReason: "Late order after cutoff",
     at: PLACES.o4,
-    driveMins: 5,
-    miles: 2.4,
+    driveMins: 10,
+    miles: 2.9,
   },
 ];
 
@@ -428,6 +511,7 @@ export const OPEN_POOL: Stop[] = [
 export const SETTINGS = {
   foodSafetyMins: 60, // time from loading before the food-safety limit (SFK ~1 h)
   foodSafetyWarnMins: 15, // warn this many minutes before the limit
+  showFoodSafety: false, // #22 hidden Oct 21 2026: not in SFK feedback, still Proposed / parking lot. Set true to show it again.
   deliveredRadiusMi: 0.1, // "one block": further than this and "Delivered" warns + flags dispatch
   timeOffNoticeDays: 7, // #76 out of office must be at least X days ahead
   requestReminderHours: 4, // #18 reminder every X hours while a request is pending
@@ -548,6 +632,24 @@ export function fmtTime(mins: number) {
 
 export function fmtWindow(a: number, b: number) {
   return `${fmtTime(a).replace(/ (AM|PM)$/, "")} – ${fmtTime(b)}`;
+}
+
+/**
+ * Estimated drive between two places ("k" = kitchen), in midday traffic. Production gets these from the routing
+ * provider; here they're OSRM drive times from the real kitchen, padded for city traffic. Falls back to the stop's own estimate.
+ */
+const DRIVES: Record<string, { mins: number; miles: number }> = {
+  "k-s1": { mins: 14, miles: 3.7 },
+  "k-s2": { mins: 8, miles: 2.6 },
+  "s1-s2": { mins: 6, miles: 1.1 },
+  "s2-k": { mins: 10, miles: 2.9 },
+  "k-s3": { mins: 12, miles: 3.4 },
+  "s2-s3": { mins: 4, miles: 0.8 },
+  "s3-p1": { mins: 5, miles: 0.9 },
+};
+export function driveBetween(from: string, to: string): { mins: number; miles: number } {
+  const stop = [...STOPS, ...OPEN_POOL].find((x) => x.id === to);
+  return DRIVES[`${from}-${to}`] ?? (stop ? { mins: stop.driveMins, miles: stop.miles } : { mins: 10, miles: 3 });
 }
 
 /** Street route between two places ("k" = kitchen). Straight line if this pair wasn't pre-routed. */

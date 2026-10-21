@@ -160,6 +160,7 @@ export function ProofScreen({ id }: { id: string }) {
   const at = s.clock + 8;
   const lateBy = at - stop.windowEnd;
   const needsName = handoff === "handed" && !st.receivedBy?.trim();
+  const needsNote = lateBy > 0 && st.delayReason === "Other" && !st.delayNote?.trim();
 
   return (
     <div className="flex h-full flex-col">
@@ -177,7 +178,7 @@ export function ProofScreen({ id }: { id: string }) {
                 <Clock className="size-5" /> Delayed · {lateBy} min past the window
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {["Kitchen was late", "Traffic", "Previous stop ran long", "Building access"].map((r) => (
+                {["Kitchen was late", "Traffic", "Previous stop ran long", "Building access", "Other"].map((r) => (
                   <button
                     key={r}
                     onClick={() => a.updateStop(id, { delayReason: r })}
@@ -187,6 +188,18 @@ export function ProofScreen({ id }: { id: string }) {
                   </button>
                 ))}
               </div>
+              {/* "Other" needs a few words so dispatch knows what held the stop up. */}
+              {st.delayReason === "Other" && (
+                <textarea
+                  value={st.delayNote ?? ""}
+                  onChange={(e) => a.updateStop(id, { delayNote: e.target.value })}
+                  rows={2}
+                  autoFocus
+                  placeholder="What held you up?"
+                  aria-label="Delay reason"
+                  className="mt-2 w-full resize-none rounded-2xl border border-warning-border bg-card px-4 py-3 text-base font-normal text-foreground outline-none focus:border-warning focus:ring-2 focus:ring-warning/30"
+                />
+              )}
             </div>
           )}
         </section>
@@ -290,6 +303,11 @@ export function ProofScreen({ id }: { id: string }) {
         {st.photos === 0 ? (
           <Button size="lg" className="w-full" onClick={() => a.push({ name: "camera", id })}>
             <Camera /> {t("Take a photo to finish")}
+          </Button>
+        ) : needsNote ? (
+          // #4: "Other" delay reason needs a few words before the slide unlocks.
+          <Button size="lg" variant="outline" className="w-full" disabled>
+            Say what held you up
           </Button>
         ) : needsName ? (
           // #12: "Delivered" is logged with who received it, so the slide waits for a name.

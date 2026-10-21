@@ -1,11 +1,12 @@
 import { Bell, CalendarOff, Car, CheckCircle2, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, MapPin, Navigation, RadioTower, RotateCcw } from "lucide-react";
 import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm } from "../store";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_ISO, SETTINGS, KITCHEN_READY, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
+import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_DATE, ROUTE_ISO, SETTINGS, KITCHEN_READY, driveBetween, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
 import type { Availability } from "../data/availability";
 import { Badge, Button, Card, cn, IconChip, SectionLabel, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
 import { MapView, type Pin } from "../components/MapView";
 import { DeliveryScene } from "../components/Illustrations";
+import { RouteTimeline } from "./Today";
 
 /* ---------------- Route tab ----------------
  * The whole day on a map, with a swipeable row of stop cards at the bottom (back to this style Oct 15 2026).
@@ -70,6 +71,31 @@ function useDragRail(rail: React.RefObject<HTMLDivElement | null>, step: number,
   return { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp, onClickCapture };
 }
 
+/**
+ * Route tab (Oct 21 2026): no map, just today's route as a timeline (kitchen pickups and stops in order).
+ * Same mint header + white panel as Schedule. MapTab below is kept for when the map comes back.
+ */
+export function RouteTab() {
+  const { s } = useApp();
+  const t = useT();
+  const live = liveRoute(s); // same count as Home's "N of M delivered"
+  const delivered = live.filter((x) => s.stops[x.id].status === "delivered").length;
+  return (
+    <div className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
+      <div className="bg-[#CFE8E8] px-4 pb-8 pt-1 text-teal-deep">
+        <h1 className="px-1 text-[26px] font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
+        <p className="nums mt-0.5 px-1 text-[15px] font-semibold text-teal-deep/80">
+          {ROUTE_DATE} · {delivered} {t("of")} {live.length} {t("delivered")}
+        </p>
+      </div>
+      {/* Rows and title bands run edge to edge, so the panel has no side padding; its rounded top clips the first band. */}
+      <div className="relative z-[2] -mx-px -mt-4 w-[calc(100%+2px)] flex-1 overflow-hidden rounded-t-[28px] border border-b-0 border-border-strong bg-white pb-8">
+        <RouteTimeline />
+      </div>
+    </div>
+  );
+}
+
 export function MapTab() {
   const { s, a } = useApp();
   const STOPS = liveRoute(s); // assigned + claimed, numbered in route order; cancelled stops drop off the map
@@ -112,6 +138,27 @@ export function MapTab() {
   // A claimed order loaded on its own kitchen run starts from the kitchen, not the previous stop.
   const fromOf = (i: number) => (i === 0 || s.loaded[STOPS[i].id] === "kitchen-run" || needsKitchenRun(s, STOPS[i].id) ? "k" : STOPS[i - 1].id);
   const route = STOPS.map((x, i) => ({ coords: legBetween(fromOf(i), x.id), done: s.stops[x.id].status === "delivered" }));
+  /** Oct 20 2026: estimated drive into each card, from the kitchen or the stop before it. */
+  const driveTo = (it: Item) => {
+    if (it.kind === "kitchen") {
+      const before = STOPS[STOPS.findIndex((x) => x.kind !== "pickup" && runOf(x) === it.run) - 1];
+      return before ? { ...driveBetween(before.id, "k"), from: `back from ${before.name}` } : null;
+    }
+    const i = STOPS.indexOf(it.stop);
+    const from = fromOf(i);
+    return { ...driveBetween(from, it.stop.id), from: from === "k" ? "from the kitchen" : `from ${STOPS[i - 1].name}` };
+  };
+  const DriveLine = ({ it }: { it: Item }) => {
+    const d = driveTo(it);
+    return d ? (
+      <div className="nums mt-1 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+        <Car className="size-4 shrink-0" aria-hidden />
+        <span className="truncate">
+          <b className="font-semibold text-foreground">{d.mins} min drive</b> {d.from} · {d.miles} mi
+        </span>
+      </div>
+    ) : null;
+  };
 
   // Pin tap → bring its card into the middle of the carousel (Uber Eats pattern).
   const pickPin = (id: string) => {
@@ -215,6 +262,7 @@ export function MapTab() {
                 <div className="nums mt-2 text-[15px] font-semibold text-teal-deep">
                   {done && loadedAt != null ? `Loaded ${fmtTime(loadedAt)}` : `Ready ${fmtTime(KITCHEN_READY[it.run] ?? KITCHEN.readyAt)}`}
                 </div>
+                {!done && <DriveLine it={it} />}
               </Card>
             );
           }
@@ -241,8 +289,9 @@ export function MapTab() {
                 <span className="block">{x.city}</span>
               </address>
               <div className="nums mt-2 text-[15px] font-semibold text-teal-deep">
-                {st.status === "delivered" ? `${x.kind === "pickup" ? "Collected" : "Delivered"} ${fmtTime(st.deliveredAt!)}` : `${fmtWindow(x.windowStart, x.windowEnd)} · ${x.miles} mi`}
+                {st.status === "delivered" ? `${x.kind === "pickup" ? "Collected" : "Delivered"} ${fmtTime(st.deliveredAt!)}` : fmtWindow(x.windowStart, x.windowEnd)}
               </div>
+              {st.status !== "delivered" && st.status !== "arrived" && <DriveLine it={it} />}
             </Card>
           );
         })}

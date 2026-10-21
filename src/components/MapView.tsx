@@ -18,7 +18,8 @@ export type Pin = { id: string; at: LngLat; label: string; title?: string; state
 
 const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 
-const C = {
+type Palette = typeof SFK;
+const SFK = {
   land: "#F3EEDF",
   landuse: "#EFE8D5",
   park: "#DCEBCF",
@@ -33,10 +34,29 @@ const C = {
   route: "#004045",
   routeFaint: "#007078",
   routeDone: "#B9B29E",
+  routeCasing: "#FFFFFF",
+};
+/** Google Maps navigation look (Oct 21 2026): turn-by-turn hands off to Google Maps, so its screen looks like it. */
+const GOOGLE: Palette = {
+  land: "#F1F3F4",
+  landuse: "#ECEFF1",
+  park: "#CDEBD3",
+  water: "#AADAFF",
+  building: "#E3E5E8",
+  casing: "#D5D8DC",
+  road: "#FFFFFF",
+  highway: "#FDE293",
+  rail: "#D2D5D9",
+  label: "#5F6368",
+  waterLabel: "#3C7BC6",
+  route: "#4C8DF6",
+  routeFaint: "#4C8DF6",
+  routeDone: "#BDC1C6",
+  routeCasing: "#1A5FCC",
 };
 
 /** Recolor the stock Positron style into the SFK palette. Layer ids are Positron's. */
-function theme(style: StyleSpecification): StyleSpecification {
+function theme(style: StyleSpecification, C: Palette): StyleSpecification {
   const layers = style.layers
     .filter((l) => !l.id.startsWith("boundary") && !l.id.includes("shield"))
     .map((l) => {
@@ -64,14 +84,16 @@ function theme(style: StyleSpecification): StyleSpecification {
 }
 
 // Offline / blocked tiles: still show the route and pins on plain cream.
-const FALLBACK: StyleSpecification = { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": C.land } }] };
+const fallback = (C: Palette): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": C.land } }] });
 
-let stylePromise: Promise<StyleSpecification> | null = null;
-const loadStyle = () =>
-  (stylePromise ??= fetch(STYLE_URL)
+const stylePromises: Partial<Record<"sfk" | "google", Promise<StyleSpecification>>> = {};
+const loadStyle = (look: "sfk" | "google") => {
+  const P = look === "google" ? GOOGLE : SFK;
+  return (stylePromises[look] ??= fetch(STYLE_URL)
     .then((r) => r.json())
-    .then(theme)
-    .catch(() => FALLBACK));
+    .then((s) => theme(s, P))
+    .catch(() => fallback(P)));
+};
 
 /* ---------------- geometry helpers ---------------- */
 
@@ -113,8 +135,15 @@ const lines = (legs: { coords: LngLat[]; done?: boolean }[]) => ({
 
 /* ---------------- markers (plain DOM, styled with the same Tailwind tokens) ---------------- */
 
-function pinEl(p: Pin, selected: boolean, onClick?: (id: string) => void) {
+function pinEl(p: Pin, selected: boolean, onClick?: (id: string) => void, google = false) {
   const el = document.createElement("button");
+  if (google) {
+    // Google's red destination pin.
+    el.tabIndex = -1;
+    el.className = "pointer-events-none";
+    el.innerHTML = `<svg viewBox="0 0 24 34" width="30" height="42" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))"><path d="M12 0C5.4 0 0 5.2 0 11.7 0 20.5 12 34 12 34s12-13.5 12-22.3C24 5.2 18.6 0 12 0Z" fill="#EA4335" stroke="#B31412" stroke-width="1"/><circle cx="12" cy="11.5" r="4.3" fill="#7F1210"/></svg>`;
+    return el;
+  }
   el.setAttribute("aria-label", p.title ? `Stop ${p.label}: ${p.title}` : p.label);
   if (onClick) el.addEventListener("click", (e) => (e.stopPropagation(), onClick(p.id)));
   else el.tabIndex = -1;
@@ -137,9 +166,14 @@ function pinEl(p: Pin, selected: boolean, onClick?: (id: string) => void) {
   return el;
 }
 
-function driverEl(nav: boolean) {
+function driverEl(nav: boolean, google = false) {
   const el = document.createElement("div");
   el.className = "pointer-events-none relative grid size-6 place-items-center";
+  if (google) {
+    // Google's blue navigation chevron with a white edge.
+    el.innerHTML = `<svg viewBox="0 0 24 24" class="relative size-10" style="filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))"><path d="M12 2.5 20.5 21 12 16.8 3.5 21Z" fill="#4285F4" stroke="white" stroke-width="2.2" stroke-linejoin="round"/></svg>`;
+    return el;
+  }
   el.innerHTML = nav
     ? // Heading arrow while navigating; rotated via the marker's rotation.
       `<span class="anim-pulse absolute size-6 rounded-full bg-teal/40"></span><svg viewBox="0 0 24 24" class="relative size-8 drop-shadow-[0_2px_4px_rgba(0,64,69,.45)]"><path d="M12 2 20 21 12 16.5 4 21Z" fill="#007078" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>`
@@ -165,6 +199,7 @@ export function MapView({
   padding = { top: 60, bottom: 60, left: 40, right: 40 },
   recenterClassName = "bottom-4 right-4",
   className,
+  look = "sfk",
 }: {
   pins: Pin[];
   /** Whole day's legs in order; finished legs go gray. */
@@ -184,7 +219,10 @@ export function MapView({
   padding?: Padding;
   recenterClassName?: string;
   className?: string;
+  /** "google": Google Maps colours, blue route, blue chevron and red destination pin. */
+  look?: "sfk" | "google";
 }) {
+  const google = look === "google";
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
@@ -200,7 +238,8 @@ export function MapView({
   /* create once */
   useEffect(() => {
     let dead = false;
-    loadStyle().then((style) => {
+    const C = google ? GOOGLE : SFK;
+    loadStyle(look).then((style) => {
       if (dead || !box.current) return;
       const m = new maplibregl.Map({
         container: box.current,
@@ -232,8 +271,8 @@ export function MapView({
             "line-dasharray": [0.6, 1.8],
           },
         });
-        m.addLayer({ id: "leg-casing", type: "line", source: "leg", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#FFFFFF", "line-width": 10 } });
-        m.addLayer({ id: "leg", type: "line", source: "leg", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": C.route, "line-width": 6 } });
+        m.addLayer({ id: "leg-casing", type: "line", source: "leg", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": C.routeCasing, "line-width": google ? 13 : 10 } });
+        m.addLayer({ id: "leg", type: "line", source: "leg", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": C.route, "line-width": google ? 9 : 6 } });
         box.current?.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
         setReady(true);
       });
@@ -272,7 +311,7 @@ export function MapView({
     // Selected pin is added last so it sits above the others.
     const ordered = [...pins].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId));
     markers.current = ordered.map((p) =>
-      new maplibregl.Marker({ element: pinEl(p, p.id === selectedId, interactive ? onPinClick : undefined), anchor: p.id === selectedId && p.title ? "bottom" : "center", offset: p.id === selectedId && p.title ? [0, -6] : [0, 0] })
+      new maplibregl.Marker({ element: pinEl(p, p.id === selectedId, interactive ? onPinClick : undefined, google), anchor: google || (p.id === selectedId && p.title) ? "bottom" : "center", offset: p.id === selectedId && p.title ? [0, -6] : [0, 0] })
         .setLngLat(p.at)
         .addTo(map.current!),
     );
@@ -283,7 +322,7 @@ export function MapView({
   useEffect(() => {
     if (!ready) return;
     driver.current?.remove();
-    driver.current = showDriver && driverPos ? new maplibregl.Marker({ element: driverEl(!!follow), rotationAlignment: "map" }).setLngLat(driverPos).addTo(map.current!) : null;
+    driver.current = showDriver && driverPos ? new maplibregl.Marker({ element: driverEl(!!follow, google), rotationAlignment: "map" }).setLngLat(driverPos).addTo(map.current!) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, showDriver, follow]);
 
