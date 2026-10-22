@@ -15,7 +15,7 @@ import { Inbox } from "./screens/Inbox";
 import { ProblemFlow } from "./screens/Problem";
 import { PublicPage, ScanScreen } from "./screens/Scan";
 import { VehicleScreen } from "./screens/Vehicle";
-import { OfflineBar, PushBanner, UpdateGate } from "./components/SystemLayer";
+import { OfflineBar, PushBanner, SwipeAway, UndoSnackbar, UpdateGate } from "./components/SystemLayer";
 import { Sheets } from "./screens/Sheets";
 import { AvailabilityScreen } from "./screens/Availability";
 import { CollectScreen } from "./screens/Collect";
@@ -45,12 +45,12 @@ function TabBar() {
             <span className={cn("relative grid h-8 w-14 place-items-center rounded-full transition-colors", on ? "bg-teal-wash text-teal-deep" : "text-muted-foreground")}>
               <I className="size-[22px]" strokeWidth={on ? 2.4 : 2} />
               {id === "schedule" && pending > 0 && (
-                <span className="nums absolute -top-0.5 right-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[10px] font-bold text-white" aria-label={`${pending} pending`}>
+                <span className="nums absolute -top-0.5 right-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-2xs font-bold text-white" aria-label={`${pending} pending`}>
                   {pending}
                 </span>
               )}
             </span>
-            <span className={cn("text-[11px] font-semibold", on ? "text-teal-deep" : "text-muted-foreground")}>{t(label)}</span>
+            <span className={cn("text-2xs font-semibold", on ? "text-teal-deep" : "text-muted-foreground")}>{t(label)}</span>
           </button>
         );
       })}
@@ -169,7 +169,7 @@ function Screens({ full }: { full: boolean }) {
 
   const isTabs = top.name === "tabs";
   const statusTop =
-    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || ((s.tab === "schedule" || s.tab === "map") && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" ? "mint" : top.name === "navigate" ? "mint" : isTabs && s.tab === "history" ? "teal" : "light";
+    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || ((s.tab === "schedule" || s.tab === "map") && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : isTabs && s.tab === "history" ? "teal" : "light";
 
   return (
     <PhoneFrame
@@ -194,20 +194,23 @@ function Screens({ full }: { full: boolean }) {
       </div>
       <Sheets />
       <PushBanner />
+      <UndoSnackbar />
       <UpdateGate />
       {/* Confirmations ("Accepted", "Slip scanned", "Sent to dispatch"): one dark-green banner that drops in under the
-          status bar, like a system banner. Kept off the bottom so it never covers the action buttons. */}
+          status bar, like a system banner. Kept off the bottom so it never covers the action buttons. Swipe up or right to put it away. */}
       {(s.notice || s.toast) && (
         <div role="status" key={s.notice?.title ?? s.toast} className="anim-drop absolute inset-x-2 top-1 z-[75] max-[500px]:top-[calc(env(safe-area-inset-top)+4px)]">
-          <div data-dark-surface className="flex items-center gap-3 rounded-[18px] bg-teal-deep px-3.5 py-3 text-white shadow-[0_10px_30px_rgba(0,64,69,0.28)]">
-            <span className="grid size-7 shrink-0 place-items-center rounded-full bg-success">
-              <Check className="size-4" strokeWidth={3} />
-            </span>
-            <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-[15px] font-semibold">{s.notice?.title ?? s.toast}</span>
-              {s.notice?.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{s.notice.body}</span>}
-            </span>
-          </div>
+          <SwipeAway onDismiss={a.dismissToast}>
+            <div data-dark-surface className="flex items-center gap-3 rounded-[18px] bg-teal-deep px-3.5 py-3 text-white shadow-[0_10px_30px_rgba(0,64,69,0.28)]">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-success">
+                <Check className="size-4" strokeWidth={3} />
+              </span>
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-[15px] font-semibold">{s.notice?.title ?? s.toast}</span>
+                {s.notice?.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{s.notice.body}</span>}
+              </span>
+            </div>
+          </SwipeAway>
         </div>
       )}
     </PhoneFrame>
@@ -243,7 +246,7 @@ export default function App() {
           onClick={() => setFull(false)}
           aria-label="Exit phone view"
           title="Exit phone view (Esc)"
-          className="anim-fade fixed left-1/2 top-2 z-[90] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/70 px-3 text-xs font-semibold text-white backdrop-blur-md max-[500px]:hidden"
+          className="anim-fade fixed left-1/2 top-2 z-[90] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/70 px-3 text-[13px] font-semibold text-white backdrop-blur-md max-[500px]:hidden"
         >
           <Minimize2 className="size-3.5" /> Exit phone view
         </button>
@@ -253,7 +256,7 @@ export default function App() {
             <button
               onClick={() => setDispatch((d) => !d)}
               aria-pressed={dispatch}
-              className="anim-fade flex h-12 items-center gap-2 rounded-full border border-border-strong bg-card pl-1.5 pr-5 text-sm font-semibold text-teal-deep shadow-raised transition hover:bg-teal-wash max-[960px]:hidden"
+              className="anim-fade flex h-12 items-center gap-2 rounded-full border border-border-strong bg-card pl-1.5 pr-5 text-[15px] font-semibold text-teal-deep shadow-raised transition hover:bg-teal-wash max-[960px]:hidden"
             >
               <span className="grid size-9 place-items-center rounded-full bg-teal-wash text-teal-deep">
                 <Headphones className="size-[18px]" />
@@ -263,7 +266,7 @@ export default function App() {
           )}
           <button
             onClick={() => setFull(true)}
-            className="anim-fade flex h-12 items-center gap-2 rounded-full bg-teal-deep pl-1.5 pr-5 text-sm font-semibold text-white shadow-raised transition hover:bg-sidebar-active"
+            className="anim-fade flex h-12 items-center gap-2 rounded-full bg-teal-deep pl-1.5 pr-5 text-[15px] font-semibold text-white shadow-raised transition hover:bg-sidebar-active"
           >
             <span className="grid size-9 place-items-center rounded-full bg-yellow text-teal-deep">
               <Smartphone className="size-[18px]" />

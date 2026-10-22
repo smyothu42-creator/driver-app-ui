@@ -1,13 +1,13 @@
 import { Headphones, RotateCcw, X } from "lucide-react";
 import { useApp } from "../store";
 import { DISPATCH, ROUTE_DATE } from "../data/route";
-import { DriverRequests, OpenHoursEditor, SkipRequests, TimeOffRequests, UnassignedOrders } from "./DispatchBoard";
+import { DriverRequests, OpenHoursEditor, SkipRequests, TimeOffRequests, TodayChanges, UnassignedOrders } from "./DispatchBoard";
 import { isOn } from "../data/sprints";
 
 /* ------------------------------------------------------------------
  * Dispatch page (SFK Admin), shown beside the phone with the "Dispatch view" button.
  * Only the Schedule & assignment parts (Sprint 2): request statuses, reminders, the 48 h flag,
- * open hours and time-off approvals, plus reusables pickup skip requests. It shares state with the phone, so every change shows on both.
+ * open hours and time-off approvals, plus reusables pickup skip requests and (Notifications) time changes and cancels. It shares state with the phone, so every change shows on both.
  * ------------------------------------------------------------------ */
 export function DispatchPage({ onClose }: { onClose: () => void }) {
   const { a } = useApp();
@@ -31,6 +31,7 @@ export function DispatchPage({ onClose }: { onClose: () => void }) {
         </button>
       </header>
       <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        {isOn("notifications") && <TodayChanges />}
         <DriverRequests />
         <UnassignedOrders />
         <OpenHoursEditor />

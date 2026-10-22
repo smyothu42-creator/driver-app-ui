@@ -227,7 +227,7 @@ function MapsSheet({ id }: { id: string }) {
       </p>
       <div className="space-y-2">
         {["Google Maps"].map((m) => (
-          <button key={m} onClick={() => { a.closeSheet(); a.toast(`Opening ${m}…`); }} className="flex w-full items-center gap-3 rounded-xl border border-control p-3 text-left text-sm font-semibold">
+          <button key={m} onClick={() => { a.closeSheet(); a.toast(`Opening ${m}…`); }} className="flex w-full items-center gap-3 rounded-xl border border-control p-3 text-left text-[15px] font-semibold">
             <MapPin className="size-5 text-teal" /> {m}
             <span className="ml-auto text-2xs font-semibold text-muted-foreground">Handles traffic, turn by turn</span>
           </button>
@@ -289,7 +289,7 @@ function StartShiftSheet() {
   const { a } = useApp();
   return (
     <Sheet title="Go on duty?" onClose={a.closeSheet}>
-      <p className="-mt-1 text-[16px] leading-snug text-muted-foreground">
+      <p className="-mt-1 text-[15px] leading-snug text-muted-foreground">
         Dispatch will see your location while you're on duty.
       </p>
       <Button size="lg" className="mt-5 w-full" onClick={a.startShift}>
@@ -366,7 +366,10 @@ function ClaimedSheet({ id }: { id: string }) {
   );
 }
 
-/** #18: declining needs a reason. Presets first; "Other" needs a few words. */
+/**
+ * #18: "Can't do it" asks why, but the reason is optional (Oct 22 2026, replacing the earlier "reason + comment
+ * required"). Tap a preset (tap again to clear) and/or add a comment; Send works either way.
+ */
 const DECLINE = ["Not available that day", "Timing doesn't work", "Too far from me", "Vehicle too small", "Other"];
 
 function DeclineSheet({ id }: { id: string }) {
@@ -374,12 +377,11 @@ function DeclineSheet({ id }: { id: string }) {
   const r = s.requests.find((x) => x.id === id)!;
   const [pick, setPick] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  // Agreed: declining needs a reason and a comment for dispatch.
-  const ok = !!pick && note.trim().length >= 3;
+  const reason = [pick !== "Other" ? pick : null, note.trim() || null].filter(Boolean).join(" · ") || undefined;
   return (
     <Sheet title="Why can't you take it?" onClose={a.closeSheet}>
       <p className="-mt-3 mb-4 text-[13px] text-muted-foreground">
-        {r.name} · {r.dateLabel}. Dispatch needs a reason to reassign it.
+        {r.name} · {r.dateLabel}. Optional: a reason helps dispatch reassign it.
       </p>
       <div role="radiogroup" className="space-y-2">
         {DECLINE.map((d) => (
@@ -387,8 +389,8 @@ function DeclineSheet({ id }: { id: string }) {
             key={d}
             role="radio"
             aria-checked={pick === d}
-            onClick={() => setPick(d)}
-            className={cn("flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 text-left text-sm font-semibold", pick === d ? "border-teal bg-teal-wash text-teal-deep" : "border-control")}
+            onClick={() => setPick(pick === d ? null : d)}
+            className={cn("flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 text-left text-[15px] font-semibold", pick === d ? "border-teal bg-teal-wash text-teal-deep" : "border-control")}
           >
             <span className={cn("grid size-5 place-items-center rounded-full border-2", pick === d ? "border-teal bg-teal" : "border-control")}>{pick === d && <Check className="size-3 text-white" strokeWidth={4} />}</span>
             {d}
@@ -396,7 +398,7 @@ function DeclineSheet({ id }: { id: string }) {
         ))}
       </div>
       <label className="mt-4 block text-[13px] font-semibold text-muted-foreground">
-        Comment for dispatch
+        Comment for dispatch (optional)
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -405,8 +407,8 @@ function DeclineSheet({ id }: { id: string }) {
           className="mt-1.5 w-full resize-none rounded-2xl border border-control bg-card px-4 py-3 text-base font-normal text-foreground outline-none focus:border-teal focus:ring-2 focus:ring-teal/30"
         />
       </label>
-      <Button size="lg" variant={ok ? "coral" : "outline"} className="mt-4 w-full" disabled={!ok} onClick={() => a.answerRequest(id, "declined", pick === "Other" ? note.trim() : `${pick} · ${note.trim()}`)}>
-        {ok ? "Send to dispatch" : !pick ? "Pick a reason" : "Add a comment"}
+      <Button size="lg" className="mt-4 w-full" onClick={() => a.answerRequest(id, "declined", reason)}>
+        Send to dispatch
       </Button>
     </Sheet>
   );
@@ -528,7 +530,7 @@ function LaterPickupSheet({ id }: { id: string }) {
       <div className="flex items-center gap-3">
         <StopAvatar stop={stop} className="size-12" />
         <span className="min-w-0">
-          <span className="block truncate text-[20px] font-bold leading-tight tracking-tight">
+          <span className="block truncate text-xl font-bold leading-tight tracking-tight">
             {stop.seq}. {stop.name}
           </span>
           <span className="nums block text-[13px] text-muted-foreground">
@@ -551,9 +553,10 @@ function LaterPickupSheet({ id }: { id: string }) {
 
 function OpenHoursSheet() {
   const { s, a } = useApp();
+  const t = useT();
   const todayIdx = weekdayOf(ROUTE_ISO);
   return (
-    <Sheet title="Open hours" onClose={a.closeSheet}>
+    <Sheet title={t("Your availability")} onClose={a.closeSheet}>
       <p className="-mt-3 mb-3 text-[13px] text-muted-foreground">When dispatch can send you work. Set by dispatch.</p>
       <ul className="divide-y divide-border">
         {WEEKDAYS.map((day, i) => {
@@ -561,10 +564,10 @@ function OpenHoursSheet() {
           if (!h) return null;
           const today = i === todayIdx;
           return (
-            <li key={day} className={cn("nums flex h-12 items-center justify-between text-[16px]", today ? "font-semibold text-teal-deep" : "text-foreground")}>
+            <li key={day} className={cn("nums flex h-12 items-center justify-between text-[15px]", today ? "font-semibold text-teal-deep" : "text-foreground")}>
               <span>
                 {day}
-                {today && <span className="ml-2 rounded-full bg-teal-wash px-2 py-0.5 text-[12px] font-semibold text-teal-deep">Today</span>}
+                {today && <span className="ml-2 rounded-full bg-teal-wash px-2 py-0.5 text-[13px] font-semibold text-teal-deep">Today</span>}
               </span>
               <span>{fmtHours(h)}</span>
             </li>
@@ -596,7 +599,7 @@ function LanguageSheet() {
             role="radio"
             aria-checked={s.lang === v}
             onClick={() => a.setLang(v)}
-            className={cn("flex h-14 w-full items-center justify-between rounded-2xl border px-4 text-base font-semibold", s.lang === v ? "border-teal bg-teal-wash text-teal-deep" : "border-control")}
+            className={cn("flex h-14 w-full items-center justify-between rounded-2xl border px-4 text-[17px] font-semibold", s.lang === v ? "border-teal bg-teal-wash text-teal-deep" : "border-control")}
           >
             {l}
             {s.lang === v && <Check className="size-5" />}

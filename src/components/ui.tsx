@@ -18,7 +18,7 @@ const VARIANT: Record<Variant, string> = {
   "danger-outline": "border border-danger bg-card text-danger hover:bg-danger-bg",
   dark: "bg-teal-deep text-white hover:bg-sidebar",
 };
-const SIZE = { sm: "h-9 px-3.5 text-sm", md: "h-11 px-5 text-sm", lg: "h-14 px-6 text-base" };
+const SIZE = { sm: "h-9 px-3.5 text-[15px]", md: "h-11 px-5 text-[15px]", lg: "h-14 px-6 text-[17px]" };
 
 export function Button({
   variant = "coral",
@@ -91,7 +91,7 @@ export const STATUS_META: Record<StopStatus, { label: string; tone: Tone }> = {
 /** Status word as a soft pill (same look as the 48 h chip): tinted fill, coloured word, no border. */
 export function StatusText({ tone, children, className }: { tone: "done" | "now" | "wait" | "later" | "off"; children: ReactNode; className?: string }) {
   const c = { done: "bg-success-bg text-success", now: "bg-coral-soft text-coral-deep", wait: "bg-yellow-wash text-[#7A6A00]", later: "bg-muted text-muted-foreground", off: "bg-danger-bg text-danger" }[tone];
-  return <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] font-semibold", c, className)}>{children}</span>;
+  return <span className={cn("inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[13px] font-semibold", c, className)}>{children}</span>;
 }
 
 /* ---------- Workflow step track ----------
@@ -128,7 +128,7 @@ export function StepTrack({ steps, current, className }: { steps: string[]; curr
               </span>
               <span
                 className={cn(
-                  "absolute top-full mt-1 whitespace-nowrap text-[11px] tracking-tight",
+                  "absolute top-full mt-1 whitespace-nowrap text-2xs tracking-tight",
                   align,
                   state === "done" && "font-semibold text-teal-deep",
                   state === "current" && "font-bold text-coral-deep",
@@ -172,7 +172,8 @@ const WORK: Record<Work, { label: string; Icon: typeof Flame; cls: string; ink: 
  * Work type at a stop (hot / cold / reusables). `pill` (default) is the filled chip for detail screens;
  * `plain` is the quiet list version: coloured icon + grey word, no background.
  */
-export function WorkTags({ stop, work, className, variant = "pill", onDark, strong }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean }) {
+/** `short`: "Reusables" instead of "Reusables pickup", for narrow rows (Route tab). */
+export function WorkTags({ stop, work, className, variant = "pill", onDark, strong, short }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean; short?: boolean }) {
   // A request (Schedule) passes its work list directly; a stop derives it.
   const list = work ?? (stop ? workOf(stop) : []);
   // On a dark (Superfine green) surface the icons use light tints so they keep contrast.
@@ -185,7 +186,7 @@ export function WorkTags({ stop, work, className, variant = "pill", onDark, stro
           return (
             <span key={w} className={cn("inline-flex items-center gap-1 text-[13px] font-medium", onDark ? "text-white/80" : strong ? "text-teal-deep" : "text-muted-foreground")}>
               <Icon className={cn("size-3.5", onDark ? darkInk[w] : ink)} strokeWidth={2.2} />
-              {label}
+              {short && w === "reusables" ? "Reusables" : label}
             </span>
           );
         })}
@@ -211,6 +212,20 @@ export function SfkMark({ className }: { className?: string; strokeWidth?: numbe
   return <span aria-hidden className={cn("block bg-current", className)} style={{ maskImage: `url(${sfkMark})`, WebkitMaskImage: `url(${sfkMark})`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "center", WebkitMaskPosition: "center" }} />;
 }
 
+/* ---------- Segmented progress bar ----------
+ * One segment per item (Oct 22 2026): "0 of 5" shows five empty segments, so an empty bar reads as empty, not as a
+ * bar that failed to load; filled segments are teal. `track` is the empty colour for the surface it sits on.
+ */
+export function SegmentBar({ done, total, track = "bg-teal-soft", className }: { done: number; total: number; track?: string; className?: string }) {
+  return (
+    <div className={cn("flex gap-1", className)} role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+      {Array.from({ length: Math.max(total, 1) }, (_, i) => (
+        <span key={i} className={cn("h-1.5 min-w-0 flex-1 rounded-full transition-colors duration-500", i < done ? "bg-teal" : track)} />
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Card ---------- */
 export function Card({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
   const Tag = onClick ? "button" : "div";
@@ -231,7 +246,7 @@ export function Card({ children, className, onClick }: { children: ReactNode; cl
 export function SectionLabel({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-3 px-1">
-      <h2 className="text-[20px] font-bold leading-tight tracking-tight text-foreground">{children}</h2>
+      <h2 className="text-xl font-bold leading-tight tracking-tight text-foreground">{children}</h2>
       {action}
     </div>
   );
@@ -283,7 +298,7 @@ export function TopBar({
         <span className="w-2" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-semibold tracking-tight">{title}</div>
+        <div className="truncate text-[17px] font-semibold tracking-tight">{title}</div>
         {subtitle && <div className={cn("truncate text-2xs", dark ? "text-sidebar-muted" : "text-muted-foreground")}>{subtitle}</div>}
       </div>
       {right}
@@ -298,7 +313,7 @@ export function Sheet({ children, onClose, title }: { children: ReactNode; onClo
       <button aria-label="Close" className="anim-fade absolute inset-0 bg-teal-deep/40" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="anim-sheet relative max-h-[88%] overflow-y-auto rounded-t-3xl bg-card px-5 pb-8 pt-3 shadow-raised">
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border-strong" />
-        {title && <h3 className="mb-4 text-[22px] font-bold leading-tight tracking-tight">{title}</h3>}
+        {title && <h3 className="mb-4 text-xl font-bold leading-tight tracking-tight">{title}</h3>}
         {children}
       </div>
     </div>
@@ -330,7 +345,7 @@ export function SlideToConfirm({ label, onConfirm, tone = "coral" }: { label: st
       onPointerUp={end}
       onPointerLeave={end}
     >
-      <div className="pointer-events-none absolute inset-0 grid place-items-center pl-10 text-base font-semibold text-white">{label}</div>
+      <div className="pointer-events-none absolute inset-0 grid place-items-center pl-10 text-[17px] font-semibold text-white">{label}</div>
       <button
         aria-label={label}
         onClick={() => onConfirm()}

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Check, CheckCheck, Flame, Info, Lock, Minus, ScanLine, Snowflake, Truck } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, Flame, Info, Lock, Minus, ScanLine, Snowflake, Truck } from "lucide-react";
 import { findStop, runStops, useApp, vehicleOf, type State } from "../store";
 import { KITCHEN, KITCHEN_READY, VEHICLES, fmtTime, fmtWindow, runOf, tempsOf, workOf, type Bag, type Stop } from "../data/route";
 import { ActionBar, Button, Card, cn, SlideToConfirm, TopBar } from "../components/ui";
@@ -69,6 +69,7 @@ function LoadActions({ current }: { current?: Stop }) {
 /**
  * One order, opened by scanning its slip or from the list on Home. Hot / cold is shown once, for the whole order
  * (it matches the packaging type). Items: one row per person's meal, or each family-style main with its sides.
+ * Individual-meal orders can also be counted By dish ("9× Lemon chicken rice bowl"), with the names one tap away.
  */
 export function PackageScreen({ id }: { id: string }) {
   const { s, a } = useApp();
@@ -79,10 +80,25 @@ export function PackageScreen({ id }: { id: string }) {
   const done = checkedCount(s, stop);
   const total = stop.bags.length;
   const [onlyLeft, setOnlyLeft] = useState(false);
+  // Oct 22 2026, like the kitchen board's Order / Item views: count by dish ("3 lemon chicken bowls") or go name by name.
+  // Both views tick the same meals, so the driver can switch back and forth without losing anything.
+  const [view, setViewState] = useState<"name" | "dish">(lastView);
+  const setView = (v: "name" | "dish") => setViewState((lastView = v));
+  const [openDish, setOpenDish] = useState<string | null>(null);
   const [info, setInfo] = useState(false); // why scan first: behind the "i", not a banner
   const big = total > 8; // the "to check" filter only earns its space on long lists
 
   const shown = stop.bags.filter((b) => !onlyLeft || !s.bagChecks[b.id]);
+  // Individual-meal orders: one dish per meal (the detail line), modifiers kept ("no cilantro" is its own row so it's counted apart).
+  // Most first, like a kitchen tally. Only offered when some dish repeats; family style is already grouped by main.
+  const dishes = Object.values(
+    stop.bags.reduce<Record<string, { name: string; items: Bag[] }>>((acc, b) => {
+      (acc[b.detail] ??= { name: b.detail, items: [] }).items.push(b);
+      return acc;
+    }, {}),
+  ).sort((x, y) => y.items.length - x.items.length || x.name.localeCompare(y.name));
+  const canGroup = stop.customerType !== "family" && dishes.length < total;
+  const byDish = canGroup && view === "dish" && !locked; // before the scan it's just the plain list
   // Family style: each main with its sides, in the order the kitchen packed them.
   const groups = shown.reduce<{ name?: string; items: Bag[] }[]>((acc, b) => {
     const g = acc.find((x) => x.name === b.group);
@@ -92,11 +108,13 @@ export function PackageScreen({ id }: { id: string }) {
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
+    // White page (Oct 22 2026), with a white top bar and status bar to match.
+    <div className="flex h-full flex-col bg-white">
       <TopBar
         title={`${stop.seq}. ${stop.name}`}
         subtitle={`${stop.orderNo} · ${fmtWindow(stop.windowStart, stop.windowEnd)}`}
         onBack={a.back}
+        tone="mint"
         right={
           locked && !later ? (
             <span className="relative">
@@ -120,7 +138,8 @@ export function PackageScreen({ id }: { id: string }) {
         }
       />
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <Card className="overflow-hidden">
+        {/* Same teal stroke and soft shadow as Home's Dock / Ready in card. */}
+        <Card className="overflow-hidden !border-teal/25 !shadow-[0_1px_6px_rgba(0,64,69,0.05)]">
           {/* The order at a glance: hot / cold for the whole order (from its packaging), then what kind of order it is. */}
           <div className="flex items-center gap-3 px-4 py-3.5">
             <OrderTemp stop={stop} />
@@ -140,10 +159,10 @@ export function PackageScreen({ id }: { id: string }) {
             <div className="border-t border-border px-4 py-3">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="nums text-[15px] font-semibold">
-                  {done} <span className="text-muted-foreground">of {total} checked</span>
+                  {done} <span className="text-muted-foreground">of {total} loaded</span>
                 </span>
                 {/* Saved on every tap: leaving this screen never loses progress. */}
-                <span className="flex items-center gap-1 text-[12px] font-semibold text-success">
+                <span className="flex items-center gap-1 text-[13px] font-semibold text-success">
                   <CheckCheck className="size-3.5" /> Saved
                 </span>
               </div>
@@ -160,35 +179,30 @@ export function PackageScreen({ id }: { id: string }) {
           </Banner>
         ) : null}
 
-        {big && !locked && (
-          <div className="flex gap-2" role="group" aria-label="Show">
-              {(
-                [
-                  [false, `All ${total}`],
-                  [true, `To check ${total - done}`],
-                ] as const
-              ).map(([v, label]) => (
-                <button key={label} onClick={() => setOnlyLeft(v)} aria-pressed={onlyLeft === v} className={cn("nums h-10 rounded-full border px-4 text-[13px] font-semibold", onlyLeft === v ? "border-teal-deep bg-teal-deep text-white" : "border-control text-foreground")}>
-                  {label}
-                </button>
-              ))}
+        {/* By dish / By name on the left (By dish first: it's the default), All / To load on the right: the same compact tabs as the Schedule filter. */}
+        {(canGroup || big) && !locked && (
+          <div className="flex items-center justify-between gap-2">
+            {canGroup ? (
+              <Segmented label="Group by" value={view} onChange={setView} options={[["dish", "By dish"], ["name", "By name"]]} />
+            ) : (
+              <span />
+            )}
+            {big && <Segmented label="Show" value={onlyLeft ? "left" : "all"} onChange={(v) => setOnlyLeft(v === "left")} options={[["all", `All ${total}`], ["left", `To load ${total - done}`]]} />}
           </div>
         )}
 
-        {/* Home-style list: grey title band(s), white rows with hairlines, edge to edge (no box). */}
+        {/* White list with hairlines, edge to edge (no box); the Select all row and family-style group headers are grey (Oct 22 2026). */}
         <div className="-mx-4 border-y border-border bg-white">
-          {!groups.some((g) => g.name) && (
-            <div className="nums border-b border-border bg-muted/60 px-4 py-2 text-[13px] font-semibold text-muted-foreground">{stop.customerType === "family" ? "What's in it" : `${total} ${total === 1 ? "meal" : "meals"}`}</div>
-          )}
-          {/* Select all: ticks every item in this order at once (or clears them all when everything is ticked). */}
+          {/* Select all: ticks every item in this order at once (or clears them all when everything is ticked).
+              The one grey band in the list (Schedule's day-band grey), so it reads as a header, not an item. */}
           {!locked && (
             <button
               role="checkbox"
               aria-checked={done === total ? true : done > 0 ? "mixed" : false}
               onClick={() => a.setOrderLoaded(stop.bags.map((b) => b.id), done !== total)}
-              className={cn("flex min-h-[56px] w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors duration-300", done === total && "bg-success-bg")}
+              className={cn("flex min-h-[56px] w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors duration-300", done === total ? "bg-success-bg" : "bg-muted/60")}
             >
-              <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2 transition-colors", done === total ? "border-success bg-success text-white" : done > 0 ? "border-teal bg-teal text-white" : "border-teal bg-teal-wash")}>
+              <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2 transition-colors", done === total ? "border-success bg-success text-white" : done > 0 ? "border-teal bg-teal text-white" : "border-teal bg-white")}>
                 {done === total ? <Check className="size-4" strokeWidth={3} /> : done > 0 && <Minus className="size-4" strokeWidth={3} />}
               </span>
               <span className="flex-1 text-[15px] font-semibold">{done === total ? "Clear all" : "Select all"}</span>
@@ -197,13 +211,65 @@ export function PackageScreen({ id }: { id: string }) {
               </span>
             </button>
           )}
-          {groups.length === 0 && <p className="px-4 py-6 text-center text-[15px] text-muted-foreground">Everything's checked</p>}
-          {groups.map((g, i) => (
+          {groups.length === 0 && <p className="px-4 py-6 text-center text-[15px] text-muted-foreground">Everything's loaded</p>}
+          {byDish ? (
+            <ul className="divide-y divide-border">
+              {dishes
+                .filter((d) => !onlyLeft || d.items.some((b) => !s.bagChecks[b.id]))
+                .map((d) => {
+                  const got = d.items.filter((b) => s.bagChecks[b.id]).length;
+                  const all = got === d.items.length;
+                  const open = openDish === d.name;
+                  return (
+                    <li key={d.name}>
+                      <div className={cn("flex min-h-[64px] items-stretch transition-colors duration-300", all && "bg-success-bg")}>
+                        {/* Tap the dish: all of them are counted (or cleared). */}
+                        <button
+                          role="checkbox"
+                          aria-checked={all ? true : got > 0 ? "mixed" : false}
+                          onClick={() => a.setOrderLoaded(d.items.map((b) => b.id), !all)}
+                          className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 text-left"
+                        >
+                          <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2 transition-colors", all ? "border-success bg-success text-white" : got > 0 ? "border-teal bg-teal text-white" : "border-teal bg-teal-wash")}>
+                            {all ? <Check className="size-4" strokeWidth={3} /> : got > 0 && <Minus className="size-4" strokeWidth={3} />}
+                          </span>
+                          {/* The count first and big: it's what the driver matches against the shelf. */}
+                          <span className={cn("nums w-9 shrink-0 text-xl font-bold leading-none", all ? "text-muted-foreground" : "text-teal-deep")}>{d.items.length}×</span>
+                          <span className="min-w-0 flex-1">
+                            <span className={cn("block truncate text-[15px] font-semibold", all && "text-muted-foreground")}>{d.name}</span>
+                            <span className="nums block truncate text-[13px] text-muted-foreground">{got > 0 && !all ? `${got} of ${d.items.length} · ` : ""}{d.items.map((b) => b.label.split(" ")[0]).join(", ")}</span>
+                          </span>
+                        </button>
+                        {/* Names inside, to tick one by one when only some are there. */}
+                        <button onClick={() => setOpenDish(open ? null : d.name)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} names for ${d.name}`} className="grid w-12 shrink-0 place-items-center text-muted-foreground">
+                          <ChevronDown className={cn("size-5 transition-transform", open && "rotate-180")} />
+                        </button>
+                      </div>
+                      {open && (
+                        <ul className="anim-fade divide-y divide-border border-t border-border bg-muted/30">
+                          {d.items.map((b) => {
+                            const on = !!s.bagChecks[b.id];
+                            return (
+                              <li key={b.id}>
+                                <button role="checkbox" aria-checked={on} onClick={() => a.toggleBag(b.id)} className={cn("flex min-h-[52px] w-full items-center gap-3 py-2 pl-[60px] pr-4 text-left transition-colors duration-300", on && "bg-success-bg")}>
+                                  <span className={cn("grid size-6 shrink-0 place-items-center rounded-md border-2 transition-colors", on ? "border-success bg-success text-white" : "border-teal bg-white")}>{on && <Check className="size-3.5" strokeWidth={3} />}</span>
+                                  <span className={cn("min-w-0 flex-1 truncate text-[15px] font-medium", on && "text-muted-foreground")}>{b.label}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : groups.map((g, i) => (
             <div key={g.name ?? "items"} className={i > 0 ? "border-t border-border" : undefined}>
               {g.name && (
                 <div className="flex items-baseline justify-between gap-3 border-b border-border bg-muted/60 px-4 py-2 text-muted-foreground">
                   <span className="truncate text-[13px] font-semibold">{g.name}</span>
-                  <span className="nums shrink-0 text-[12px] font-semibold text-muted-foreground">
+                  <span className="nums shrink-0 text-[13px] font-semibold text-muted-foreground">
                     {stop.bags.filter((b) => b.group === g.name && s.bagChecks[b.id]).length}/{stop.bags.filter((b) => b.group === g.name).length}
                   </span>
                 </div>
@@ -243,9 +309,28 @@ export function PackageScreen({ id }: { id: string }) {
   );
 }
 
-/** "24 meals" for individual-meal orders, "Serves 20" for family style. Never a bag count. */
+/** The last grouping the driver picked, kept while the app is open so every order opens the same way. Starts on By dish (Oct 22 2026). */
+let lastView: "name" | "dish" = "dish";
+
+/** Compact segmented tabs (grey track, white raised pill), the same look as the Schedule filter. */
+function Segmented<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: readonly (readonly [T, string])[] }) {
+  return (
+    <div role="tablist" aria-label={label} className="inline-flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-muted p-1">
+      {options.map(([v, text]) => (
+        <button key={v} role="tab" aria-selected={value === v} onClick={() => onChange(v)} className={cn("nums flex h-8 items-center whitespace-nowrap rounded-full px-3 text-[13px] font-semibold", value === v ? "bg-card text-teal-deep shadow-card" : "text-muted-foreground")}>
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Order size in one unit for every order (Oct 22 2026): "Serves 24" for 24 individual meals, "Serves 20" for family style,
+ * so a list never mixes "meals" and "serves". Never a bag or container count.
+ */
 export function orderSize(stop: Stop) {
-  return stop.customerType === "family" ? `Serves ${stop.meals}` : `${stop.meals} ${stop.meals === 1 ? "meal" : "meals"}`;
+  return `Serves ${stop.meals}`;
 }
 
 /** Hot / cold for the whole order, shown once at the top of it. Matches the packaging type. */

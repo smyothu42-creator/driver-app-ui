@@ -34,7 +34,7 @@ export function CameraScreen({ id }: { id: string }) {
         ))}
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-[108px] flex justify-center px-6">
-        <span className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold backdrop-blur-md">
+        <span className="rounded-full bg-black/55 px-4 py-2 text-[15px] font-semibold backdrop-blur-md">
           {stop.customerType === "individual" ? "Show the bag and the door number" : "Show every bag and where you left it"}
         </span>
       </div>
@@ -45,7 +45,7 @@ export function CameraScreen({ id }: { id: string }) {
         <button aria-label="Close camera" onClick={a.back} className="grid size-11 place-items-center rounded-full bg-black/45 backdrop-blur-md">
           <X className="size-5" />
         </button>
-        <span className="max-w-[60%] truncate rounded-full bg-black/45 px-3.5 py-1.5 text-sm font-semibold backdrop-blur-md">{stop.name}</span>
+        <span className="max-w-[60%] truncate rounded-full bg-black/45 px-3.5 py-1.5 text-[15px] font-semibold backdrop-blur-md">{stop.name}</span>
         <button aria-label={torch ? "Turn flashlight off" : "Turn flashlight on"} aria-pressed={torch} onClick={() => setTorch((v) => !v)} className={cn("grid size-11 place-items-center rounded-full backdrop-blur-md", torch ? "bg-white text-black" : "bg-black/45")}>
           {torch ? <Flashlight className="size-5" /> : <FlashlightOff className="size-5" />}
         </button>
@@ -238,7 +238,7 @@ export function ProofScreen({ id }: { id: string }) {
                 role="radio"
                 aria-checked={handoff === v}
                 onClick={() => a.updateStop(id, { handoff: v })}
-                className={cn("h-11 rounded-full text-sm font-semibold transition-colors", handoff === v ? "bg-teal-deep text-white" : "text-foreground/70")}
+                className={cn("h-11 rounded-full text-[15px] font-semibold transition-colors", handoff === v ? "bg-teal-deep text-white" : "text-foreground/70")}
               >
                 {v === "handed" ? "Handed to someone" : "Left at drop-off"}
               </button>
@@ -271,7 +271,7 @@ export function ProofScreen({ id }: { id: string }) {
             <span className="min-w-0 flex-1 text-[13px]">
               {st.collected ? `${stop.reusables.reduce((n, x) => n + (st.collected![x.id] ?? 0), 0)} of ${stop.reusables.reduce((n, x) => n + x.expected, 0)} reusables collected` : "Count the reusables you're collecting"}
             </span>
-            <span className="text-sm font-semibold text-teal">{st.collected ? "Edit" : "Count"}</span>
+            <span className="text-[15px] font-semibold text-teal">{st.collected ? "Edit" : "Count"}</span>
           </Card>
         )}
 

@@ -149,7 +149,7 @@ function pinEl(p: Pin, selected: boolean, onClick?: (id: string) => void, google
   else el.tabIndex = -1;
 
   if (p.state === "kitchen") {
-    el.className = "grid size-9 place-items-center rounded-xl border-[2.5px] border-teal-deep bg-yellow text-xs font-extrabold text-teal-deep shadow-[0_2px_8px_rgba(0,64,69,.3)]";
+    el.className = "grid size-9 place-items-center rounded-xl border-[2.5px] border-teal-deep bg-yellow text-[13px] font-extrabold text-teal-deep shadow-[0_2px_8px_rgba(0,64,69,.3)]";
     el.textContent = "SF";
     return el;
   }
@@ -377,7 +377,7 @@ export function MapView({
             setUserMoved(false);
             if (!follow) fitAll(true);
           }}
-          className={cn("anim-fade absolute z-10 flex h-11 items-center gap-1.5 rounded-full bg-card px-4 text-sm font-semibold text-teal-deep shadow-raised", recenterClassName)}
+          className={cn("anim-fade absolute z-10 flex h-11 items-center gap-1.5 rounded-full bg-card px-4 text-[15px] font-semibold text-teal-deep shadow-raised", recenterClassName)}
         >
           <LocateFixed className="size-4" /> Recenter
         </button>

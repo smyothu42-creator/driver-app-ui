@@ -40,13 +40,14 @@ export function StopDetail({ id }: { id: string }) {
               {/* Name with the delivery window at the end of the same line. */}
               {/* Profile picture with the two call buttons beside it (#14: one tap to the customer side or the SFK side). */}
               <div className="mb-3 flex items-center gap-3">
-                <StopAvatar stop={stop} className="size-14 text-[17px]" />
+                <StopAvatar stop={stop} className="size-14 shrink-0 text-[17px]" />
+                {/* The buttons share the space beside the picture (never overlap it on a narrow phone). */}
                 {!cancelled && (
-                  <div className="flex min-w-0 flex-1 justify-end gap-2" data-flow="actions">
-                    <Button variant="outline" size="md" className="shrink-0 gap-1.5 px-3.5" onClick={() => a.openSheet({ name: "people", id, who: "customer" })}>
+                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-2" data-flow="actions">
+                    <Button variant="outline" size="md" className="min-w-0 gap-1 whitespace-nowrap px-2" onClick={() => a.openSheet({ name: "people", id, who: "customer" })}>
                       <Phone /> {t("Customer")}
                     </Button>
-                    <Button variant="outline" size="md" className="shrink-0 gap-1.5 px-3.5" onClick={() => a.openSheet({ name: "people", id, who: "sfk" })}>
+                    <Button variant="outline" size="md" className="min-w-0 gap-1 whitespace-nowrap px-2" onClick={() => a.openSheet({ name: "people", id, who: "sfk" })}>
                       <Headphones /> {t("SFK Team")}
                     </Button>
                   </div>
@@ -175,7 +176,7 @@ export function StopDetail({ id }: { id: string }) {
             <Card className="divide-y divide-border border-border-strong">
               {stop.reusables.map((x) => (
                 <div key={x.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="min-w-0 flex-1 text-sm font-semibold">{x.label}</span>
+                  <span className="min-w-0 flex-1 text-[15px] font-semibold">{x.label}</span>
                   <span className="nums text-[15px] font-bold">
                     {st.collected ? `${st.collected[x.id] ?? 0} / ` : ""}
                     {x.expected}
@@ -248,7 +249,7 @@ export function StopDetail({ id }: { id: string }) {
             <PhotoThumb door={stop.customerType === "individual"} shot={0} />
           </div>
           <div className="flex-1" />
-          <p className="p-4 pb-10 text-center text-sm text-white">Tap to close</p>
+          <p className="p-4 pb-10 text-center text-[15px] text-white">Tap to close</p>
         </div>
       )}
     </div>
@@ -282,7 +283,7 @@ function TeamCard({ stopId, onSite }: { stopId: string; onSite: boolean }) {
             <IconChip>
               <BadgeCheck />
             </IconChip>
-            <div className="text-sm">
+            <div className="text-[15px]">
               Your role: <b className="font-semibold">{mine.role}</b>
             </div>
           </div>
@@ -295,7 +296,7 @@ function TeamCard({ stopId, onSite }: { stopId: string; onSite: boolean }) {
                 <li key={c.userId} className="flex items-center gap-3">
                   <span className="grid size-9 shrink-0 place-items-center rounded-full bg-teal-soft text-2xs font-bold text-teal-deep">{c.staff.initials}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{c.staff.name}</span>
+                    <span className="block truncate text-[15px] font-semibold">{c.staff.name}</span>
                     {lead && s.attendance[stopId]?.[c.userId] && (
                       <span className="nums block text-2xs text-muted-foreground">
                         In {fmtTime(s.attendance[stopId][c.userId].in!)}
@@ -328,7 +329,7 @@ export function ContactRow({ c, tag }: { c: Contact; tag: string }) {
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] font-semibold text-muted-foreground">{tag}</span>
         <span className="block truncate text-[15px] font-semibold">{c.name}</span>
-        <span className="block truncate text-[14px] text-muted-foreground">{c.role}</span>
+        <span className="block truncate text-[15px] text-muted-foreground">{c.role}</span>
       </span>
       <button onClick={() => a.toast(`Calling ${c.name}…`)} aria-label={`Call ${c.name}`} className="grid size-12 shrink-0 place-items-center rounded-full bg-teal text-white active:scale-95">
         <Phone className="size-5" />
@@ -354,7 +355,7 @@ function ProofCard({ stop, onOpen }: { stop: Stop; onOpen: () => void }) {
             "Location",
             <span key="loc" className={st.deliveredAway ? "font-semibold text-warning" : undefined}>
               {st.deliveredAway ? "Away from the address · dispatch flagged" : "At the address"}
-              <span className="nums block text-[12px] font-normal text-muted-foreground">
+              <span className="nums block text-[13px] font-normal text-muted-foreground">
                 {(stop.at[1] + (st.deliveredAway ? 0.006 : 0)).toFixed(5)}, {stop.at[0].toFixed(5)}
               </span>
             </span>,
@@ -384,7 +385,7 @@ function ProofCard({ stop, onOpen }: { stop: Stop; onOpen: () => void }) {
             ))}
           </div>
         )}
-        <dl className="divide-y divide-border border-t border-border text-[14px]">
+        <dl className="divide-y divide-border border-t border-border text-[15px]">
           {rows.map(([k, v]) => (
             <div key={k} className="flex gap-3 px-4 py-3">
               <dt className="w-28 shrink-0 text-muted-foreground">{k}</dt>
@@ -515,7 +516,7 @@ function SkipLink({ stop }: { stop: Stop }) {
   const { s, a } = useApp();
   if (!isOn("reusables") || stop.kind !== "pickup" || s.stops[stop.id].skip) return null;
   return (
-    <button onClick={() => a.openSheet({ name: "skip", id: stop.id })} className="w-full py-1 text-center text-sm font-semibold text-teal">
+    <button onClick={() => a.openSheet({ name: "skip", id: stop.id })} className="w-full py-1 text-center text-[15px] font-semibold text-teal">
       Ask dispatch to skip this pickup
     </button>
   );
@@ -576,8 +577,20 @@ function PickupStatus({ stop }: { stop: Stop }) {
  * Shown before departure, on the way (sheet from navigation) and on arrival, where a last "Finish" step
  * points at the button so the next action is never a guess.
  */
-export function StopInstructions({ stop, arrived, bleed, plain }: { stop: Stop; arrived: boolean; bleed?: boolean; plain?: boolean }) {
+/** The building entrance photo, full width so it can be read at a glance (Oct 22 2026). Tap: full screen. */
+export function EntrancePhoto({ stop, className }: { stop: Stop; className?: string }) {
   const { a } = useApp();
+  return (
+    <button onClick={() => a.openSheet({ name: "photoFull", id: stop.id })} aria-label="View entrance photo full screen" className={cn("relative block w-full overflow-hidden rounded-xl active:scale-[0.99]", className)}>
+      <img src={accessPhoto} alt={`Entrance at ${stop.addressLine1}`} className="block aspect-[16/9] w-full object-cover" />
+      <span className="absolute bottom-2 right-2 flex h-8 items-center gap-1 rounded-full bg-black/60 px-2.5 text-[13px] font-semibold text-white">
+        <Maximize2 className="size-3.5" /> Full screen
+      </span>
+    </button>
+  );
+}
+
+export function StopInstructions({ stop, arrived, bleed, plain }: { stop: Stop; arrived: boolean; bleed?: boolean; plain?: boolean }) {
   const t = useT();
   const pickup = stop.kind === "pickup";
   // Individual customers: just their delivery instructions (no parking / building access rows).
@@ -592,15 +605,7 @@ export function StopInstructions({ stop, arrived, bleed, plain }: { stop: Stop; 
     body: (
       <>
         {stop.buildingNotes}
-        {stop.hasBuildingPhoto && (
-          // Small thumbnail; tap for the full-screen photo.
-          <button onClick={() => a.openSheet({ name: "photoFull", id: stop.id })} aria-label="View entrance photo full screen" className="relative mt-2 block w-36 overflow-hidden">
-            <img src={accessPhoto} alt="Building entrance" className="block aspect-[11/6] w-full object-cover" />
-            <span className="absolute bottom-1 right-1 grid size-6 place-items-center rounded-full bg-black/55 text-white">
-              <Maximize2 className="size-3.5" />
-            </span>
-          </button>
-        )}
+        {stop.hasBuildingPhoto && <EntrancePhoto stop={stop} className="mt-2" />}
       </>
     ),
   });
@@ -657,7 +662,7 @@ function ProblemLink({ id }: { id: string }) {
   const { a } = useApp();
   const t = useT();
   return (
-    <button onClick={() => a.push({ name: "problem", id })} className="w-full py-1 text-center text-sm font-semibold text-danger">
+    <button onClick={() => a.push({ name: "problem", id })} className="w-full py-1 text-center text-[15px] font-semibold text-danger">
       {t("Report a problem")}
     </button>
   );

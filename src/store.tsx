@@ -72,6 +72,10 @@ export interface StopState {
   officeOverride?: boolean; // #74 marked at the SFK office for an appless driver
   collected?: Record<string, number>; // #53 reusable item id → actual count
   collectPhotos?: number;
+  /** Why the count doesn't match, or why nothing could be collected (Oct 22 2026). */
+  collectNote?: string;
+  /** Unsaved count on the collect screen, kept so Back never loses it. Cleared once confirmed. */
+  collectDraft?: { counts: Record<string, number>; photos: number; reason: string | null; note: string; none: boolean };
   /** Reusables pickup: the driver asked dispatch to skip it. Approved = the stop drops off the route. */
   skip?: { reason: string; at: number; status: "pending" | "approved" | "declined"; decidedAt?: number };
 }
@@ -154,6 +158,8 @@ export interface State {
   pendingSync: number; // #23 actions saved on the phone while offline
   update: "none" | "optional" | "required"; // #24
   push: Push | null; // #15 the banner currently on screen
+  /** The request just accepted, while its Undo snackbar is up (Oct 22 2026). `seq` restarts the timer on a new accept. */
+  undo: { id: string; name: string; seq: number } | null;
   inbox: Msg[]; // #6
   requests: DeliveryRequest[]; // #17–20
   openHours: OpenDay[]; // #16 set by dispatch, Monday first
@@ -211,9 +217,11 @@ const initial = (): State => ({
   pendingSync: 0,
   update: "none",
   push: null,
+  undo: null,
   inbox: [
-    { id: "m1", at: 7 * 60 + 30, from: "dispatch", kind: "info", title: "Today's route is published", body: "3 deliveries + 1 reusables pickup · kitchen ready 11:12 AM. Load in reverse order.", priority: "medium" },
+    // Newest first, like every message added later.
     { id: "m2", at: 9 * 60 + 40, from: "dispatch", kind: "reminder", title: "3 delivery requests need your answer", body: "Brightline Health is in less than 48 h.", requestId: "r2", priority: "high" },
+    { id: "m1", at: 7 * 60 + 30, from: "dispatch", kind: "info", title: "Today's route is published", body: "3 deliveries + 1 reusables pickup · kitchen ready 11:12 AM. Load in reverse order.", priority: "medium" },
   ],
   requests: REQUESTS,
   openHours: OPEN_HOURS,
@@ -229,6 +237,7 @@ const initial = (): State => ({
 
 let msgSeq = 10;
 let pushSeq = 1;
+let undoSeq = 1;
 /** #23: while offline, every driver action is queued on the phone and synced later. */
 const queued = (p: State): Partial<State> => (p.online ? {} : { pendingSync: p.pendingSync + 1 });
 
@@ -393,7 +402,7 @@ function useAppState() {
       /** #16: dispatch changes the driver's open hours; the phone gets a push and shows the new hours. */
       setOpenHours: (openHours: OpenDay[]) =>
         patch((p) => {
-          const title = "Your open hours changed";
+          const title = "Your availability changed";
           const body = "Set by dispatch · see Schedule";
           return {
             openHours,
@@ -446,6 +455,7 @@ function useAppState() {
       },
       setAway: (awayFromAddress: boolean) => patch({ awayFromAddress }),
       dismissPush: () => patch({ push: null }),
+      dismissToast: () => patch({ toast: null, notice: null }),
       openPush: () =>
         patch((p) => {
           const open = p.push?.open;
@@ -486,11 +496,16 @@ function useAppState() {
           // Back to the Schedule tab, where the answer shows straight away.
           // Answered from the Requests list: stay there. Otherwise back to the Schedule tab.
           const onList = p.stack.at(-1)?.name === "requests";
-          return { ...p, sheet: null, requests, ...(onList ? {} : { stack: [{ name: "tabs" }] as Screen[], tab: "schedule" as Tab }), ...queued(p) };
+          // Accepting is one tap, so it gets an Undo snackbar instead of a confirmation pop-up.
+          const undo = status === "accepted" ? { id, name: r.name, seq: undoSeq++ } : p.undo;
+          return { ...p, sheet: null, requests, undo, ...(onList ? {} : { stack: [{ name: "tabs" }] as Screen[], tab: "schedule" as Tab }), ...queued(p) };
         });
-        // Same-day accepts show the "added to your route" sheet instead of a pop-up.
-        if (!(status === "accepted" && id.startsWith("q-"))) popup(status === "accepted" ? "Accepted" : "Sent to dispatch", status === "accepted" ? "Dispatch can see it" : "They'll reassign it");
+        if (status === "declined") popup("Sent to dispatch", "They'll reassign it");
       },
+      /** Undo snackbar: the request goes back to waiting for an answer. */
+      undoAccept: () =>
+        patch((p) => (p.undo ? { requests: p.requests.map((x) => (x.id === p.undo!.id ? { ...x, status: "pending" as const } : x)), undo: null } : {})),
+      dismissUndo: () => patch({ undo: null }),
       /** Dispatch sends an unassigned order to a driver as a same-day request. */
       sendOrderRequest: (orderId: string) =>
         set((p) => {
@@ -536,7 +551,7 @@ function useAppState() {
         }),
       /** #53: actual counts + photo. A pickup stop is done when collected; on a delivery it's an add-on. */
       /** Missing items aren't noted here: the collect screen opens the problem flow for them (Oct 21 2026). */
-      collectReusables: (id: string, counts: Record<string, number>, photos: number) =>
+      collectReusables: (id: string, counts: Record<string, number>, photos: number, note?: string) =>
         set((p) => {
           const stop = findStop(p, id);
           // Collected during the delivery at the same address: it's done, but the driver stays on that delivery.
@@ -548,7 +563,7 @@ function useAppState() {
             clock: p.clock + (pickup ? 6 : 0),
             stops: {
               ...p.stops,
-              [id]: { ...st, collected: counts, collectPhotos: photos, returnsCollected: true, ...(stop.kind === "pickup" ? { status: "delivered" as const, deliveredAt: p.clock + (pickup ? 5 : 0), deliveredAway: p.awayFromAddress } : {}) },
+              [id]: { ...st, collected: counts, collectPhotos: photos, collectNote: note, collectDraft: undefined, returnsCollected: true, ...(stop.kind === "pickup" ? { status: "delivered" as const, deliveredAt: p.clock + (pickup ? 5 : 0), deliveredAway: p.awayFromAddress } : {}) },
             },
             stack: pickup ? [{ name: "tabs" }] : p.stack.filter((x) => x.name !== "collect"),
             tab: pickup ? "today" : p.tab,
@@ -597,6 +612,19 @@ function useAppState() {
             stops: { ...p.stops, [id]: { ...p.stops[id], status: "cancelled", cancelledAt: p.clock } },
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "cancel", title, body, stopId: id, priority: "high" }, ...p.inbox],
             push: { id: pushSeq++, title, body, tone: "high", open: { name: "stop", id } },
+          };
+        }),
+      /** #31 / #70: dispatch cancels work the driver already accepted, or a "Usual route" placeholder with no order by the cutoff. */
+      cancelRequest: (id: string) =>
+        set((p) => {
+          const r = p.requests.find((x) => x.id === id)!;
+          const title = r.placeholder ? `Usual route cancelled · ${r.name}` : `Cancelled · ${r.name}`;
+          const body = r.placeholder ? `${r.dateLabel} · no order came in. That slot is free.` : `${r.dateLabel} · ~${fmtTime(r.time)}. Taken off your schedule.`;
+          return {
+            ...p,
+            requests: p.requests.map((x) => (x.id === id ? { ...x, status: "cancelled" as const, cancelledAt: p.clock } : x)),
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "cancel", title, body, requestId: id, priority: "high" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id } },
           };
         }),
       /** #19: dispatch sends a new delivery request. */

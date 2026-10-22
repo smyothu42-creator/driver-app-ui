@@ -89,7 +89,7 @@ export function Permissions() {
                   {s.location === o.v && <span className="size-2 rounded-full bg-white" />}
                 </span>
                 <span>
-                  <span className="block text-sm font-semibold">{o.title}</span>
+                  <span className="block text-[15px] font-semibold">{o.title}</span>
                   <span className="block text-2xs text-muted-foreground">{o.body}</span>
                 </span>
               </button>

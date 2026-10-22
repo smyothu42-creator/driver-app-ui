@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Ban, BellRing, CalendarPlus, Clock, Info, ListOrdered, MessageSquare, Send } from "lucide-react";
 import { useApp, useT, type Msg } from "../store";
 import { DISPATCH, fmtTime } from "../data/route";
@@ -8,6 +8,7 @@ import { cn, TopBar } from "../components/ui";
  * #6 In-app messages to and from dispatch (replaces texting drivers).
  * #15 Time changes and cancellations land here as high-priority messages, with a push banner.
  * Replies are presets only: no typing while working (UX skill §13).
+ * Like a chat (review Oct 22 2026): oldest at the top, newest at the bottom next to the replies, opened scrolled to the newest.
  * ------------------------------------------------------------------ */
 
 const QUICK = ["On my way", "Running about 10 min late", "Loaded and leaving the kitchen", "Please call me when you can"];
@@ -19,6 +20,12 @@ export function Inbox() {
   const t = useT();
   // Opening the inbox marks everything read (clears the bell badge on Home).
   useEffect(() => a.markInboxRead(), [s.inbox.length, a]);
+  // Start at the newest message, and follow new ones (a reply, or a message from dispatch) as they arrive.
+  const list = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const el = list.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [s.inbox.length]);
 
   const open = (m: Msg) => {
     if (m.requestId) a.push({ name: "request", id: m.requestId });
@@ -30,8 +37,9 @@ export function Inbox() {
   return (
     <div className="flex h-full flex-col">
       <TopBar title={t("Inbox")} subtitle={`With dispatch · ${DISPATCH.name}`} onBack={a.back} tone="white" />
-      <ol className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
-        {s.inbox.map((m) => {
+      {/* s.inbox is newest first; shown oldest first. A short list sits at the bottom, by the replies. */}
+      <ol ref={list} className="flex flex-1 flex-col space-y-2 overflow-y-auto px-4 py-4 [&>li:first-child]:mt-auto">
+        {[...s.inbox].reverse().map((m) => {
           const Icon = ICON[m.kind];
           const mine = m.from === "you";
           const tappable = !!(m.requestId || m.stopId || m.goto);

@@ -14,7 +14,7 @@ export function ComingSoon({ f, back, skip }: { f: AreaInfo; back: boolean; skip
         <span className="hero-yellow grid size-20 place-items-center rounded-3xl text-teal-deep">
           <Construction className="size-10" />
         </span>
-        <h1 className="mt-5 text-[24px] font-bold leading-tight tracking-tight">{t("Coming soon")}</h1>
+        <h1 className="mt-5 text-2xl font-bold leading-tight tracking-tight">{t("Coming soon")}</h1>
         <p className="mt-2 text-[17px] font-semibold text-teal-deep">{t(f.feature)}</p>
         <p className="mt-1 text-[15px] text-muted-foreground">
           {f.sprint ? `${t("Being designed in Sprint")} ${f.sprint}${f.due ? ` · ${f.due}` : ""}` : t("Not in the current design plan")}

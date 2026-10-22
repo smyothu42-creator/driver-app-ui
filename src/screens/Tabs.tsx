@@ -3,7 +3,7 @@ import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type Loca
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_DATE, ROUTE_ISO, SETTINGS, KITCHEN_READY, driveBetween, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
 import type { Availability } from "../data/availability";
-import { Badge, Button, Card, cn, IconChip, SectionLabel, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
+import { Badge, Button, Card, cn, IconChip, SectionLabel, SegmentBar, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
 import { MapView, type Pin } from "../components/MapView";
 import { DeliveryScene } from "../components/Illustrations";
 import { RouteTimeline } from "./Today";
@@ -83,10 +83,14 @@ export function RouteTab() {
   return (
     <div className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
       <div className="bg-[#CFE8E8] px-4 pb-8 pt-1 text-teal-deep">
-        <h1 className="px-1 text-[26px] font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
-        <p className="nums mt-0.5 px-1 text-[15px] font-semibold text-teal-deep/80">
-          {ROUTE_DATE} · {delivered} {t("of")} {live.length} {t("delivered")}
-        </p>
+        <h1 className="px-1 text-2xl font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
+        {/* Date and progress, with the same bar as Home's duty card, exactly as wide as the line (white track on the mint). */}
+        <div className="mt-0.5 inline-block px-1">
+          <p className="nums whitespace-nowrap text-[15px] font-semibold text-teal-deep/80">
+            {ROUTE_DATE} · {delivered} {t("of")} {live.length} {t("delivered")}
+          </p>
+          <SegmentBar done={delivered} total={live.length} track="bg-white" className="mt-1.5" />
+        </div>
       </div>
       {/* Rows and title bands run edge to edge, so the panel has no side padding; its rounded top clips the first band. */}
       <div className="relative z-[2] -mx-px -mt-4 w-[calc(100%+2px)] flex-1 overflow-hidden rounded-t-[28px] border border-b-0 border-border-strong bg-white pb-8">
@@ -191,7 +195,7 @@ export function MapTab() {
       />
       {/* Where the driver is right now, in words. Flat pill with a stroke (no glow). */}
       <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-3 rounded-full border border-border-strong bg-card px-4 py-3">
-        <span className="min-w-0 truncate text-[16px] font-semibold">
+        <span className="min-w-0 truncate text-[15px] font-semibold">
           {(() => {
             if (!s.shiftOn) return "Off duty";
             if (!s.pickupDone) return s.run > 1 ? "Back to the kitchen" : "At the kitchen";
@@ -229,7 +233,7 @@ export function MapTab() {
           <span className="h-1.5 w-11 rounded-full bg-teal-deep/40" />
         </button>
       {hidden && (
-        <button onClick={() => setHidden(false)} className="absolute -top-12 left-1/2 flex h-10 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-card px-4 text-[14px] font-semibold text-teal-deep">
+        <button onClick={() => setHidden(false)} className="absolute -top-12 left-1/2 flex h-10 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-card px-4 text-[15px] font-semibold text-teal-deep">
           <ChevronUp className="size-4" /> Show stops
         </button>
       )}
@@ -251,7 +255,7 @@ export function MapTab() {
                   <span className="grid size-11 shrink-0 place-items-center rounded-[12px] bg-teal-deep text-yellow">
                     <SfkMark className="size-6" />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[18px] font-semibold leading-tight">{it.run === 1 ? "Kitchen pickup" : `Kitchen pickup ${it.run}`}</span>
+                  <span className="min-w-0 flex-1 truncate text-[17px] font-semibold leading-tight">{it.run === 1 ? "Kitchen pickup" : `Kitchen pickup ${it.run}`}</span>
                   <StatusText tone={done ? "done" : it.run === s.run ? "now" : "later"}>{done ? "Loaded" : it.run === s.run ? "Now" : "Later"}</StatusText>
                 </div>
                 <address className="mt-2 text-[15px] not-italic leading-snug text-muted-foreground">
@@ -272,9 +276,9 @@ export function MapTab() {
             <Card key={it.key} onClick={() => a.push({ name: "stop", id: x.id })} className={cn("flex w-[304px] shrink-0 snap-center flex-col p-4 transition-shadow", on && "ring-2 ring-teal-deep")}>
               <div className="flex items-start gap-2.5">
                 {/* Company logo tile or the person's photo, so a company vs an individual reads at a glance. */}
-                <StopAvatar stop={x} className="size-11 text-[14px]" />
+                <StopAvatar stop={x} className="size-11 text-[15px]" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[18px] font-semibold leading-tight">{x.name}</span>
+                  <span className="block truncate text-[17px] font-semibold leading-tight">{x.name}</span>
                   <span className="mt-0.5 block text-[13px] font-medium text-muted-foreground">
                     Stop {x.seq} · {x.customerType === "individual" ? "Individual" : x.kind === "pickup" ? "Reusables pickup" : "Company"}
                   </span>
@@ -362,7 +366,7 @@ export function History() {
                       <span className="nums mt-0.5 block truncate text-[13px] text-muted-foreground">{x.orderNo}</span>
                     </span>
                     <span className="shrink-0 text-right">
-                      <span className="nums block text-sm font-semibold leading-tight">{fmtTime(at)}</span>
+                      <span className="nums block text-[15px] font-semibold leading-tight">{fmtTime(at)}</span>
                       <ResultTag ok={onTime}>{onTime ? "On time" : `${at - x.windowEnd} min late`}</ResultTag>
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -387,7 +391,7 @@ export function History() {
                     </div>
                   </div>
                   <span className="shrink-0 text-right">
-                    <span className="nums block text-sm font-semibold leading-tight">
+                    <span className="nums block text-[15px] font-semibold leading-tight">
                       {d.onTime}/{d.stops}
                     </span>
                     <ResultTag ok={ok}>{ok ? "All on time" : `${d.stops - d.onTime} late`}</ResultTag>
@@ -424,9 +428,9 @@ export function Me() {
       <TopBar title={t("Me")} />
       <div className="space-y-5 px-4 py-4">
         <Card className="flex items-center gap-3 p-4">
-          <span className="grid size-14 place-items-center rounded-full bg-yellow text-lg font-bold text-teal-deep">{DRIVER.initials}</span>
+          <span className="grid size-14 place-items-center rounded-full bg-yellow text-[17px] font-bold text-teal-deep">{DRIVER.initials}</span>
           <div className="min-w-0 flex-1">
-            <div className="text-lg font-semibold tracking-tight">{DRIVER.name}</div>
+            <div className="text-[17px] font-semibold tracking-tight">{DRIVER.name}</div>
             <div className="text-2xs text-muted-foreground">
               {DRIVER.type} driver · {DRIVER.phone}
             </div>
@@ -568,7 +572,7 @@ export function Tracking() {
                 role="radio"
                 aria-checked={s.location === o.v}
                 onClick={() => a.setPerm({ location: o.v })}
-                className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm font-semibold", s.location === o.v ? "border-teal bg-teal-wash" : "border-control")}
+                className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left text-[15px] font-semibold", s.location === o.v ? "border-teal bg-teal-wash" : "border-control")}
               >
                 <span className={cn("grid size-5 place-items-center rounded-full border-2", s.location === o.v ? "border-teal bg-teal" : "border-control")}>
                   {s.location === o.v && <span className="size-2 rounded-full bg-white" />}
@@ -595,7 +599,7 @@ function Who({ icon, title, body, muted }: { icon: React.ReactNode; title: strin
     <div className="flex gap-3 p-4">
       <span className={cn("mt-0.5 [&_svg]:size-5", muted ? "text-muted-foreground" : "text-teal")}>{icon}</span>
       <div>
-        <div className="text-sm font-semibold">{title}</div>
+        <div className="text-[15px] font-semibold">{title}</div>
         <div className="text-[13px] text-muted-foreground">{body}</div>
       </div>
     </div>

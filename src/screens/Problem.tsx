@@ -137,7 +137,7 @@ export function ProblemFlow({ id, reusables }: { id: string; reusables?: string[
         {step === 1 && kind === "late" && (
           <div className="grid grid-cols-3 gap-2">
             {["10 min", "20 min", "30+ min"].map((v) => (
-              <button key={v} onClick={() => setLateBy(v)} className={cn("h-14 rounded-2xl border text-base font-bold", lateBy === v ? "border-danger bg-danger-bg text-danger" : "border-control bg-card")}>
+              <button key={v} onClick={() => setLateBy(v)} className={cn("h-14 rounded-2xl border text-[17px] font-bold", lateBy === v ? "border-danger bg-danger-bg text-danger" : "border-control bg-card")}>
                 {v}
               </button>
             ))}
@@ -151,7 +151,7 @@ export function ProblemFlow({ id, reusables }: { id: string; reusables?: string[
               return (
                 <button key={label} role="checkbox" aria-checked={on} onClick={() => setBags({ ...bags, [label]: !on })} className="flex min-h-14 w-full items-center gap-3 px-4 text-left">
                   <span className={cn("grid size-6 shrink-0 place-items-center rounded-md border-2", on ? "border-danger bg-danger text-white" : "border-control")}>{on && <Check className="size-4" strokeWidth={3} />}</span>
-                  <span className="min-w-0 flex-1 text-sm font-semibold">{label}</span>
+                  <span className="min-w-0 flex-1 text-[15px] font-semibold">{label}</span>
                 </button>
               );
             })}
@@ -166,7 +166,7 @@ export function ProblemFlow({ id, reusables }: { id: string; reusables?: string[
                 <div key={x.key} className="flex min-h-14 items-center gap-3 px-4 py-2">
                   <button role="checkbox" aria-checked={on} aria-label={x.label} onClick={() => setTried({ ...tried, [x.key]: !on })} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                     <span className={cn("grid size-6 shrink-0 place-items-center rounded-md border-2", on ? "border-teal bg-teal text-white" : "border-control")}>{on && <Check className="size-4" strokeWidth={3} />}</span>
-                    <span className="text-sm font-semibold">{x.label}</span>
+                    <span className="text-[15px] font-semibold">{x.label}</span>
                   </button>
                   {x.action && (
                     <Button
@@ -282,14 +282,14 @@ function IssueCamera({ kind, shots, title, onClose, onShot }: { kind: Kind; shot
         ))}
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-[108px] flex justify-center px-6">
-        <span className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold backdrop-blur-md">{hint}</span>
+        <span className="rounded-full bg-black/55 px-4 py-2 text-[15px] font-semibold backdrop-blur-md">{hint}</span>
       </div>
       {flash > 0 && <div key={flash} className="anim-flash absolute inset-0 bg-white" />}
       <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-2">
         <button aria-label="Close camera" onClick={onClose} className="grid size-11 place-items-center rounded-full bg-black/45 backdrop-blur-md">
           <X className="size-5" />
         </button>
-        <span className="max-w-[60%] truncate rounded-full bg-black/45 px-3.5 py-1.5 text-sm font-semibold backdrop-blur-md">{title}</span>
+        <span className="max-w-[60%] truncate rounded-full bg-black/45 px-3.5 py-1.5 text-[15px] font-semibold backdrop-blur-md">{title}</span>
         <button aria-label={torch ? "Turn flashlight off" : "Turn flashlight on"} aria-pressed={torch} onClick={() => setTorch((v) => !v)} className={cn("grid size-11 place-items-center rounded-full backdrop-blur-md", torch ? "bg-white text-black" : "bg-black/45")}>
           {torch ? <Flashlight className="size-5" /> : <FlashlightOff className="size-5" />}
         </button>

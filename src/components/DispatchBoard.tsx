@@ -310,7 +310,7 @@ export function UnassignedOrders() {
                   </button>
                 )}
               </div>
-              {req?.status === "declined" && <p className="text-2xs text-foreground">“{req.reason}”</p>}
+              {req?.status === "declined" && req.reason && <p className="text-2xs text-foreground">“{req.reason}”</p>}
             </div>
           );
         })}
@@ -343,6 +343,46 @@ function VehicleSelect({ stop }: { stop: Stop }) {
         ))}
       </select>
     </div>
+  );
+}
+
+/* ---------------- #15 / #31 dispatch edits today's orders: the driver gets a push ---------------- */
+export function TodayChanges() {
+  const { s, a } = useApp();
+  const list = routeOf(s).filter((x) => x.kind !== "pickup");
+  return (
+    <section>
+      <SectionHead title={`Today's route · ${DRIVER.first}`} />
+      <div className="divide-y divide-border rounded-2xl border border-border">
+        {list.map((x) => {
+          const st = s.stops[x.id].status;
+          const done = st === "delivered" || st === "cancelled";
+          return (
+            <div key={x.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">{x.name}</span>
+                <span className="nums block text-2xs text-muted-foreground">
+                  {fmtWindow(x.windowStart, x.windowEnd)}
+                  {s.changes[x.id] && " · moved"}
+                </span>
+              </span>
+              {done ? (
+                <Badge tone={st === "delivered" ? "success" : "neutral"}>{st === "delivered" ? "Delivered" : "Cancelled"}</Badge>
+              ) : (
+                <>
+                  <button onClick={() => a.changeTime(x.id, 20)} className="h-8 shrink-0 rounded-full border border-control px-3 text-[13px] font-semibold">
+                    +20 min
+                  </button>
+                  <button onClick={() => a.cancelOrder(x.id)} className="h-8 shrink-0 rounded-full border border-control px-3 text-[13px] font-semibold text-danger">
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -428,11 +468,12 @@ const REQ_BADGE = {
   pending: { tone: "warning", label: "Pending" },
   accepted: { tone: "success", label: "Accepted" },
   declined: { tone: "danger", label: "Declined" },
+  cancelled: { tone: "neutral", label: "Cancelled" },
 } as const;
 
 export function DriverRequests() {
   const { s, a } = useApp();
-  const list = s.requests.filter((r) => !r.placeholder && !r.orderId).sort((x, y) => x.dateISO.localeCompare(y.dateISO));
+  const list = s.requests.filter((r) => !r.orderId).sort((x, y) => x.dateISO.localeCompare(y.dateISO));
   const pending = list.filter((r) => r.status === "pending").length;
   return (
     <section>
@@ -453,7 +494,7 @@ export function DriverRequests() {
         {list.map((r) => {
           // #18: not answered and under 48 h → flagged; one red chip instead of two.
           const flag = r.status === "pending" && hoursUntil(r, s.clock) <= SETTINGS.requestFlagHours;
-          const b = flag ? { tone: "danger" as const, label: "⚑ Pending · 48 h" } : REQ_BADGE[r.status];
+          const b = flag ? { tone: "danger" as const, label: "⚑ Pending · 48 h" } : r.placeholder && r.status === "accepted" ? { tone: "warning" as const, label: "Usual route" } : REQ_BADGE[r.status];
           return (
             <div key={r.id} className="px-4 py-3">
               <div className="flex items-center gap-2">
@@ -464,8 +505,14 @@ export function DriverRequests() {
                   </span>
                 </span>
                 <Badge tone={b.tone}>{b.label}</Badge>
+                {/* #31 / #70: cancel accepted work or a placeholder; the driver gets a push. */}
+                {r.status === "accepted" && (
+                  <button onClick={() => a.cancelRequest(r.id)} className="h-8 shrink-0 rounded-full border border-control px-3 text-[13px] font-semibold">
+                    Cancel
+                  </button>
+                )}
               </div>
-              {r.status === "declined" && <p className="mt-1 text-2xs text-foreground">“{r.reason}”</p>}
+              {r.status === "declined" && r.reason && <p className="mt-1 text-2xs text-foreground">“{r.reason}”</p>}
             </div>
           );
         })}
@@ -495,7 +542,7 @@ export function OpenHoursEditor() {
   const sel = "nums h-8 rounded-lg border border-control bg-card px-1.5 text-[13px] font-semibold outline-none focus:border-teal";
   return (
     <section>
-      <SectionHead title="Open hours" />
+      <SectionHead title={`${DRIVER.first}'s availability`} />
       <div className="divide-y divide-border rounded-2xl border border-border">
         {WEEKDAYS.map((day, i) => {
           const h = draft[i];

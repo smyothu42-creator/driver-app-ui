@@ -22,7 +22,8 @@ export function ScanScreen({ id }: { id?: string }) {
   const now = slips.filter((x) => runOf(x) === s.run);
   // Opened from an order: the camera is reading that order's slip. Otherwise the next one not scanned yet.
   const target = slips.find((x) => x.id === id) ?? now.find((x) => !s.scanned[x.id]);
-  const scannedNow = now.filter((x) => s.scanned[x.id]).length;
+  // Same word as everywhere else at the kitchen: an order is "loaded" once every meal in it is ticked.
+  const loadedNow = now.filter((x) => x.bags.every((b) => s.bagChecks[b.id])).length;
   // A slip already scanned never needs the capture button again.
   const next = target && !s.scanned[target.id] ? target : now.find((x) => !s.scanned[x.id]);
   const [torch, setTorch] = useState(false);
@@ -62,7 +63,7 @@ export function ScanScreen({ id }: { id?: string }) {
         <button aria-label="Close scanner" onClick={a.back} className="grid size-11 place-items-center rounded-full bg-black/45 backdrop-blur-md">
           <X className="size-5" />
         </button>
-        <span className="rounded-full bg-black/45 px-3.5 py-1.5 text-sm font-semibold backdrop-blur-md">Scan packing slip</span>
+        <span className="rounded-full bg-black/45 px-3.5 py-1.5 text-[15px] font-semibold backdrop-blur-md">Scan packing slip</span>
         <button aria-label={torch ? "Turn flashlight off" : "Turn flashlight on"} aria-pressed={torch} onClick={() => setTorch((v) => !v)} className={cn("grid size-11 place-items-center rounded-full backdrop-blur-md", torch ? "bg-white text-black" : "bg-black/45")}>
           {torch ? <Flashlight className="size-5" /> : <FlashlightOff className="size-5" />}
         </button>
@@ -70,7 +71,7 @@ export function ScanScreen({ id }: { id?: string }) {
 
       {/* Hint just under the window */}
       <div className="pointer-events-none absolute inset-x-0 flex justify-center px-6" style={{ top: `calc(${WINDOW_TOP} + ${WINDOW / 2 + 14}px)` }}>
-        <span className={cn("rounded-full px-4 py-2 text-sm font-semibold backdrop-blur-md", wrong ? "bg-danger text-white" : "bg-black/55")}>{wrong ? "Not on your route" : "Fit the QR code inside the frame"}</span>
+        <span className={cn("rounded-full px-4 py-2 text-[15px] font-semibold backdrop-blur-md", wrong ? "bg-danger text-white" : "bg-black/55")}>{wrong ? "Not on your route" : "Fit the QR code inside the frame"}</span>
       </div>
 
       {/* Bottom sheet: today's orders to scan, or the "not on your route" stop. */}
@@ -83,7 +84,7 @@ export function ScanScreen({ id }: { id?: string }) {
                 <AlertTriangle className="size-5" />
               </span>
               <span className="min-w-0">
-                <span className="block text-[20px] font-bold leading-tight tracking-tight">This isn't on your route</span>
+                <span className="block text-xl font-bold leading-tight tracking-tight">This isn't on your route</span>
                 <span className="nums mt-1 block text-[15px] leading-snug text-muted-foreground">Slip {OTHER_ROUTE_SLIP.orderNo}. Discuss with dispatch before you load it.</span>
               </span>
             </div>
@@ -98,8 +99,8 @@ export function ScanScreen({ id }: { id?: string }) {
           <>
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-[17px] font-semibold tracking-tight">Today's packing slips</span>
-              <span className={cn("nums shrink-0 text-[13px] font-semibold", now.length && scannedNow === now.length ? "text-success" : "text-muted-foreground")}>
-                {scannedNow} of {now.length} scanned
+              <span className={cn("nums shrink-0 text-[13px] font-semibold", now.length && loadedNow === now.length ? "text-success" : "text-muted-foreground")}>
+                {loadedNow} of {now.length} loaded
               </span>
             </div>
             {next ? (
@@ -321,7 +322,7 @@ export function PublicPage({ id }: { id: string }) {
             {STEPS.map((l, i) => (
               <li key={l} className="flex flex-1 flex-col gap-1">
                 <span className={cn("h-1.5 rounded-full", i <= step ? "bg-teal" : "bg-muted")} />
-                <span className={cn("text-[10px] font-semibold leading-tight", i <= step ? "text-teal-deep" : "text-muted-foreground")}>{l}</span>
+                <span className={cn("text-2xs font-semibold leading-tight", i <= step ? "text-teal-deep" : "text-muted-foreground")}>{l}</span>
               </li>
             ))}
           </ol>
@@ -332,7 +333,7 @@ export function PublicPage({ id }: { id: string }) {
             </div>
           )}
           {st.status === "delivered" && (
-            <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-success">
+            <p className="mt-4 flex items-center gap-2 text-[15px] font-semibold text-success">
               <CheckCircle2 className="size-4" /> Delivered {fmtTime(st.deliveredAt!)}
             </p>
           )}

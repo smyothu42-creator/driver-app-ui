@@ -516,6 +516,7 @@ export const SETTINGS = {
   timeOffNoticeDays: 7, // #76 out of office must be at least X days ahead
   requestReminderHours: 4, // #18 reminder every X hours while a request is pending
   requestFlagHours: 48, // #18 dispatch is flagged this long before delivery if not accepted
+  requestAnswerHours: 24, // the driver answers by this long before delivery: "Respond by Tue, 12 PM" (Oct 22 2026)
   appVersion: "3.0.2",
 };
 
@@ -561,7 +562,7 @@ export const fmtHours = (h: OpenDay) => (h ? `${fmtTime(h.start)} – ${fmtTime(
  * Every assignment is a request the driver confirms. Declining needs a reason.
  * Placeholders (#44, #70) are the driver's usual recurring route before the real order comes in.
  */
-export type RequestStatus = "pending" | "accepted" | "declined";
+export type RequestStatus = "pending" | "accepted" | "declined" | "cancelled";
 export interface DeliveryRequest {
   id: string;
   /** Same-day request for an unassigned order: accepting adds it to today's route. */
@@ -588,6 +589,8 @@ export interface DeliveryRequest {
   status: RequestStatus;
   sentAt: string;
   reason?: string;
+  /** #31 / #70: dispatch cancelled it after the driver accepted (a placeholder: no order came in). */
+  cancelledAt?: number;
 }
 
 export const REQUESTS: DeliveryRequest[] = [
