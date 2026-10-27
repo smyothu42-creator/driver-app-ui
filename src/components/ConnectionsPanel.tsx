@@ -90,9 +90,9 @@ function Flows({ onClose }: { onClose: () => void }) {
     focusId: t,
   });
 
-  const offDuty = () => a.jump(() => ({ ...base, shiftOn: false, stack: [{ name: "tabs" }], tab: "today" }));
-  const home = () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "today" }));
-  const homeLoaded = () => a.jump(() => ({ ...loaded, stack: [{ name: "tabs" }], tab: "today" }));
+  const offDuty = () => a.jump(() => ({ ...base, shiftOn: false, stack: [{ name: "tabs" }], tab: "map" }));
+  const home = () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "map" }));
+  const homeLoaded = () => a.jump(() => ({ ...loaded, stack: [{ name: "tabs" }], tab: "map" }));
   const me = () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "me" }));
   const schedule = () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "schedule" }));
   const stop = (id = t) => a.jump(() => ({ ...loaded, focusId: id, stack: [{ name: "tabs" }, { name: "stop", id }] }));
@@ -123,7 +123,7 @@ function Flows({ onClose }: { onClose: () => void }) {
       stack: [{ name: "tabs" }, { name: "pickup", id: "o1" }],
     }));
 
-  const atKitchen = () => a.jump(() => ({ ...onShift, pickupDone: false, stack: [{ name: "tabs" }], tab: "today" }));
+  const atKitchen = () => a.jump(() => ({ ...onShift, pickupDone: false, stack: [{ name: "tabs" }], tab: "map" }));
   const mapTab = () => a.jump(() => ({ ...loaded, stack: [{ name: "tabs" }], tab: "map" }));
   const reorderNow = () => {
     homeLoaded();
@@ -167,7 +167,7 @@ function Flows({ onClose }: { onClose: () => void }) {
             Act("Install the app from the link SFK sends"),
             Scr("Sign in", () => a.jump(() => ({ signedIn: false, stack: [{ name: "signin" }], sheet: null }))),
             Dec("First time on this phone?", [
-              ["Yes", [Scr("Permissions: location, camera, notifications", () => a.jump(() => ({ signedIn: true, stack: [{ name: "permissions" }], sheet: null }))), Act("Allow each")]],
+              ["Yes", [Scr("Permissions pop-up over Route: location, camera, notifications", () => a.jump(() => ({ signedIn: true, tab: "map", stack: [{ name: "tabs" }], sheet: { name: "permissions" } }))), Act("Allow each")]],
               ["No", [Sys("Permissions already set")]],
             ]),
             Scr("Home · Ready is off", offDuty),
@@ -182,7 +182,7 @@ function Flows({ onClose }: { onClose: () => void }) {
           flow: [
             Start("Home · Ready is off", offDuty),
             Act("Go on duty"),
-            Scr("Sheet: “This isn't your clock-in”", () => a.jump(() => ({ ...base, shiftOn: false, stack: [{ name: "tabs" }], tab: "today", sheet: { name: "startShift" } }))),
+            Scr("Sheet: “This isn't your clock-in”", () => a.jump(() => ({ ...base, shiftOn: false, stack: [{ name: "tabs" }], tab: "map", sheet: { name: "startShift" } }))),
             Act("Confirm", "Dispatch: driver Ready + live on the map"),
             Sys("Location on · arrow in status bar", undefined, home),
             Act("Me → turn off Ready", undefined, () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "me", sheet: { name: "endShift" } }))),
@@ -389,7 +389,7 @@ function Flows({ onClose }: { onClose: () => void }) {
           area: "route",
           flow: [
             Start("On duty at the kitchen", atKitchen),
-            Scr("Home: “Pick up at the kitchen” · dock, ready time, orders", atKitchen),
+            Scr("Home: “Pick up at the kitchen” · ready time, driver instructions, orders", atKitchen),
             Act("Pick up the order", "Customer: On the way · Dispatch: dispatched", homeLoaded),
             Scr("Next stop card: work type, window, ETA, parking + drop-off note", homeLoaded),
             Act("Start navigation", "Customer: live ETA · Dispatch: En route", startNav),
@@ -481,7 +481,7 @@ function Flows({ onClose }: { onClose: () => void }) {
             Act("Check each item (button stays disabled until all are checked)"),
             Dec("More packages?", [
               ["Yes", [Act("Scan next package"), End("Repeat")]],
-              ["No", [Act("Slide: Loaded · start route", "Customer: On the way · Dispatch: dispatched"), End("Route starts")]],
+              ["No", [Act("Slide: All orders loaded", "Customer: On the way · Dispatch: dispatched"), Scr("Route · “Start with <first stop>” sheet"), End("Go to the first stop")]],
             ]),
           ],
         },
@@ -495,8 +495,8 @@ function Flows({ onClose }: { onClose: () => void }) {
             Sys("Next-stop card: “Loaded N min ago”", undefined, homeLoaded),
             Dec("Time since loading?", [
               [`Under ${L - W} min`, [End("Neutral chip")]],
-              [`${L - W}–${L} min`, [Sys(`Amber: limit in N min`, undefined, () => a.jump((p) => ({ ...loaded, pickupAt: p.clock - 50, stack: [{ name: "tabs" }], tab: "today" })))]],
-              [`Over ${L} min`, [Sys("Red: past limit", undefined, () => a.jump((p) => ({ ...loaded, pickupAt: p.clock - (L + 5), stack: [{ name: "tabs" }], tab: "today" }))), Act("Call dispatch", "Dispatch: call from driver")]],
+              [`${L - W}–${L} min`, [Sys(`Amber: limit in N min`, undefined, () => a.jump((p) => ({ ...loaded, pickupAt: p.clock - 50, stack: [{ name: "tabs" }], tab: "map" })))]],
+              [`Over ${L} min`, [Sys("Red: past limit", undefined, () => a.jump((p) => ({ ...loaded, pickupAt: p.clock - (L + 5), stack: [{ name: "tabs" }], tab: "map" }))), Act("Call dispatch", "Dispatch: call from driver")]],
             ]),
           ],
         },
@@ -754,7 +754,7 @@ function Flows({ onClose }: { onClose: () => void }) {
           flow: [
             Start("Me", me),
             Scr("Language sheet", () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "me", sheet: { name: "language" } }))),
-            Act("Pick Español", undefined, () => a.jump(() => ({ ...onShift, lang: "es", stack: [{ name: "tabs" }], tab: "today" }))),
+            Act("Pick Español", undefined, () => a.jump(() => ({ ...onShift, lang: "es", stack: [{ name: "tabs" }], tab: "map" }))),
             End("Whole app in Spanish"),
           ],
         },

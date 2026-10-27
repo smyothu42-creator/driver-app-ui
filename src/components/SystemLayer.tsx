@@ -114,6 +114,10 @@ export function PushBanner() {
   }, [push, a.dismissPush]);
   // Notifications (inbox) is hidden for now, but request and reminder pushes still show with Schedule.
   if (!push || !(isOn("notifications") || (push.schedule && isOn("schedule")))) return null;
+  // Oct 27 2026: Me → Notifications can turn off request and message banners (they still land in the inbox).
+  if ((push.cat === "request" && !s.notifPrefs.requests) || (push.cat === "message" && !s.notifPrefs.messages)) return null;
+  // Oct 27 2026: a request still waiting for an answer can be accepted from the banner, without opening it.
+  const req = push.open?.name === "request" ? s.requests.find((r) => r.id === (push.open as { id: string }).id && r.status === "pending" && !r.days) : undefined;
   // Same dark-green drop-in banner as the confirmations ("Time off requested"), plus a close button.
   return (
     <div key={push.id} className="anim-drop absolute inset-x-2 top-1 z-[75] max-[500px]:top-[calc(env(safe-area-inset-top)+4px)]">
@@ -128,6 +132,17 @@ export function PushBanner() {
               {push.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{push.body}</span>}
             </span>
           </button>
+          {req && (
+            <button
+              onClick={() => {
+                a.dismissPush();
+                a.answerRequest(req.id, "accepted");
+              }}
+              className="h-10 shrink-0 rounded-full bg-white px-4 text-[15px] font-semibold text-teal-deep active:scale-[0.97]"
+            >
+              Accept
+            </button>
+          )}
           <button onClick={a.dismissPush} aria-label="Dismiss" className="grid size-10 shrink-0 place-items-center rounded-full text-white/70 active:bg-white/10">
             <X className="size-4" />
           </button>
@@ -194,9 +209,11 @@ export function UpdateGate() {
       <span className="grid size-16 place-items-center rounded-full bg-teal-wash text-teal">
         <Download className="size-8" />
       </span>
-      <h2 className="mt-4 text-2xl font-bold tracking-tight">Update to keep driving</h2>
-      <p className="mt-2 text-[15px] text-muted-foreground">You're on {SETTINGS.appVersion}. Every driver needs the current version so routes and stops match dispatch.</p>
-      <p className="mt-1 text-2xs text-muted-foreground">Your stops and photos are saved.</p>
+      <h2 className="mt-4 text-2xl font-bold tracking-tight">{t("Update to keep driving")}</h2>
+      <p className="mt-2 text-[15px] text-muted-foreground">
+        {t("You're on")} {SETTINGS.appVersion}. {t("Every driver needs the current version so routes and stops match dispatch.")}
+      </p>
+      <p className="mt-1 text-2xs text-muted-foreground">{t("Your stops and photos are saved.")}</p>
       <Button size="lg" className="mt-6 w-full" onClick={a.installUpdate}>
         {t("Update now")}
       </Button>

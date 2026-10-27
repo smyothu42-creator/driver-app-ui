@@ -34,7 +34,7 @@ export function ScanScreen({ id }: { id?: string }) {
     navigator.vibrate?.(40); // haptic confirm on real phones
     a.scanSlip(x.id);
     a.jump((p) => ({ stack: [...p.stack.filter((y) => y.name !== "scan" && y.name !== "package"), { name: "package" as const, id: x.id }] }));
-    a.popup("Slip scanned", `${x.orderNo} · ${x.name}`);
+    // Oct 26 2026: no "Slip scanned" pop-up; landing on the order (tracker on Load) is the confirmation.
   };
   // Not on this driver's route: no way forward from here except dispatch.
   const scanOther = () => {

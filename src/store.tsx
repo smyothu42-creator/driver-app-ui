@@ -1,18 +1,17 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { DEFAULT_VEHICLE_ID, DISPATCH, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_HOURS, OPEN_POOL, REQUESTS, workOf, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, sameAddress, type Assignment, type DeliveryRequest, type OpenDay, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
+import { DEFAULT_VEHICLE_ID, DISPATCH, SETTINGS, STORAGE_DETAILS, DRIVER, INITIAL_ASSIGNMENTS, KITCHEN, OPEN_HOURS, OPEN_POOL, REQUESTS, workOf, ROUTE_ISO, STAFF, STOPS, fmtTime, fmtWindow, runOf, sameAddress, type Assignment, type DeliveryRequest, type OpenDay, type StaffMember, type StaffRole, type Stop, type StopStatus } from "./data/route";
 import { translate, type Lang } from "./i18n";
 import { isOn } from "./data/sprints";
 import { coversWindow, dayOf, type Availability } from "./data/availability";
 
-export type Tab = "today" | "map" | "schedule" | "history" | "me";
+export type Tab = "map" | "schedule" | "history" | "me"; // Oct 26 2026: no Home tab; Route ("map") is the first screen
 
 export type Screen =
   | { name: "signin" }
-  | { name: "permissions" }
   | { name: "tabs" }
   | { name: "stop"; id: string }
   | { name: "navigate"; id: string }
-  | { name: "camera"; id: string }
+  | { name: "camera"; id: string; kind?: "food" | "reusables" } // kind: retake just that photo (from Proof)
   | { name: "proof"; id: string }
   | { name: "tracking" }
   | { name: "scan"; id?: string } // #9 packing-slip scanner at the kitchen; `id` = opened from that order, so the next scan reads its slip
@@ -22,24 +21,33 @@ export type Screen =
   | { name: "requests" } // #18 only the requests waiting for an answer (Home's request button)
   | { name: "inbox" } // #6 messages to and from dispatch
   | { name: "vehicle" } // #64 vehicle profile
+  | { name: "notifSettings" } // Oct 27 2026: Me → Notifications
+  | { name: "history" } // past deliveries, opened from Me (left the tab bar Oct 15 2026)
   | { name: "publicPage"; id: string } // #10 public delivery page opened from the slip QR
   | { name: "collect"; id: string } // #53 count reusables against the expected count
   | { name: "availability" }
-  | { name: "pickup"; id: string }; // kitchen run for one claimed order
+  | { name: "pickup"; id: string } // kitchen run for one claimed order
+  | { name: "kitchen" }; // Oct 26 2026: kitchen pickup (was Home's kitchen card): orders, load status, scan / start route
 
 export type Sheet =
+  | { name: "permissions" } // Oct 26 2026: first sign-in on a phone, over the Route tab (was its own screen)
   | { name: "contact"; id: string }
-  | { name: "people"; id: string; who: "customer" | "sfk" } // "Customer" / "SFK Team" call sheets on the stop
+  | { name: "people"; id: string; who: "customer" | "sfk" | "all" } // call sheet on the stop: customer, dispatch (SFK team), or both
+  | { name: "dropCheck"; id: string } // Oct 26 2026: tick off every item as it's put down, before setup
+  | { name: "collect"; id: string; at: string } // Oct 26 2026: reusables to collect (id) during the delivery at `at`
   | { name: "setup"; id: string } // #11 setup checklist dialog on arrival; unlocks the delivery photo
   | { name: "photo"; id: string } // parking & access photo for a stop
   | { name: "photoFull"; id: string } // the same photo, full screen
+  | { name: "pdf"; id: string } // Oct 27 2026: the stop's Delivery details PDF, full screen in the app
   | { name: "maps"; id: string }
   | { name: "instructions"; id: string } // parking, access, drop-off note for a stop, opened from navigation
   | { name: "delivered"; id: string }
+  | { name: "startRoute"; id: string } // Oct 26 2026: after the kitchen slide, on Route: start with the first stop
   | { name: "claimed"; id: string }
   | { name: "endShift" }
   | { name: "startShift" }
   | { name: "decline"; id: string } // #18 decline needs a reason
+  | { name: "acceptAll"; ids: string[] } // Oct 26 2026: accept every request in the list, after checking the dates
   | { name: "language" } // #25
   | { name: "update" } // #24
   | { name: "openHours" } // #16 the week, from the Schedule header
@@ -58,8 +66,10 @@ export interface StopState {
   handoff?: Handoff;
   receivedBy?: string;
   notes?: string;
+  dispatchNote?: string; // Oct 26 2026: optional note to dispatch from Proof of delivery
   issue?: string;
   returnsCollected?: boolean;
+  dropDone?: Record<string, boolean>; // Oct 26 2026: drop-off check, by item id
   setupDone?: boolean[];
   issuePhotos?: number;
   delayReason?: string; // #4 why it was delayed (preset)
@@ -70,12 +80,15 @@ export interface StopState {
   serviceEndAt?: number; // #12
   cancelledAt?: number; // #15 / #31
   officeOverride?: boolean; // #74 marked at the SFK office for an appless driver
-  collected?: Record<string, number>; // #53 reusable item id → actual count
+  /** Oct 26 2026: reusables data is too rough to count against, so the driver just says collected or not, with notes. */
+  collectResult?: "collected" | "not_collected";
   collectPhotos?: number;
-  /** Why the count doesn't match, or why nothing could be collected (Oct 22 2026). */
+  /** Oct 27 2026: photos of the reusables collected at this delivery, separate from the food photos (`photos`). */
+  reusablePhotos?: number;
+  /** The driver's notes for dispatch: what was different, or why nothing was collected. */
   collectNote?: string;
-  /** Unsaved count on the collect screen, kept so Back never loses it. Cleared once confirmed. */
-  collectDraft?: { counts: Record<string, number>; photos: number; reason: string | null; note: string; none: boolean };
+  /** Unsaved answer on the collect screen, kept so Back never loses it. Cleared once confirmed. */
+  collectDraft?: { result: "collected" | "not_collected" | null; photos: number; note: string };
   /** Reusables pickup: the driver asked dispatch to skip it. Approved = the stop drops off the route. */
   skip?: { reason: string; at: number; status: "pending" | "approved" | "declined"; decidedAt?: number };
 }
@@ -100,7 +113,7 @@ export interface Msg {
   stopId?: string;
   requestId?: string;
   /** Where a message without a stop or request opens: the Schedule tab or the time-off screen. */
-  goto?: "schedule" | "availability";
+  goto?: "schedule" | "availability" | "vehicle";
   priority: "high" | "medium" | "low";
   read?: boolean;
 }
@@ -113,6 +126,16 @@ export interface Push {
   open?: Screen;
   /** A delivery request or a reminder about one: shown with Schedule, even while Notifications is hidden. */
   schedule?: boolean;
+  /** Oct 27 2026: which notification setting turns it off. Route changes and cancellations have none (always on). */
+  cat?: "request" | "reminder" | "message";
+}
+
+/** Oct 27 2026: Me → Notifications. Route changes and cancellations always notify; these are the ones a driver picks. */
+export interface NotifPrefs {
+  requests: boolean; // new delivery requests (with Accept on the banner)
+  reminderHours: 1 | 2 | 4; // how often to remind about unanswered requests; never off, dispatch needs an answer
+  messages: boolean; // other messages from dispatch
+  sound: boolean; // sound and vibration
 }
 
 export interface VehicleProfile {
@@ -153,13 +176,15 @@ export interface State {
   claims: Record<string, { by: string; at: number }>; // unassigned order id → driver who accepted it, and when
   loaded: Record<string, "route" | "kitchen-run">; // order id → how it got into the vehicle
   /* Phase 3 scope */
+  profilePhoto: string | null; // Oct 26 2026: the driver's own photo, picked on Me (null = the photo SFK has on file)
   lang: Lang; // #25
   online: boolean; // #23
   pendingSync: number; // #23 actions saved on the phone while offline
   update: "none" | "optional" | "required"; // #24
   push: Push | null; // #15 the banner currently on screen
+  notifPrefs: NotifPrefs; // Oct 27 2026
   /** The request just accepted, while its Undo snackbar is up (Oct 22 2026). `seq` restarts the timer on a new accept. */
-  undo: { id: string; name: string; seq: number } | null;
+  undo: { ids: string[]; name: string; seq: number } | null;
   inbox: Msg[]; // #6
   requests: DeliveryRequest[]; // #17–20
   openHours: OpenDay[]; // #16 set by dispatch, Monday first
@@ -167,6 +192,7 @@ export interface State {
   scanned: Record<string, boolean>; // #9 packing slips scanned at the kitchen
   awayFromAddress: boolean; // #13 prototype stand-in for GPS distance at the drop
   vehicle: VehicleProfile; // #64 driver-entered
+  storage: string; // #64 storage details: dispatch edits, the driver reads
   vehicleFor: Record<string, string>; // #79 stop id → vehicle dispatch set for it; missing = driver's default
   order: string[] | null; // route re-ordered by dispatch (note A); null = planned order
   afterSignIn: Screen | null; // #10 a driver who opened the slip QR signed out lands on that stop after sign-in
@@ -187,23 +213,24 @@ try {
   // no storage (private window): nothing to clear
 }
 
+/** #7: with Login, profile & duty live (Sprint 3), the app opens on sign-in and asks for permissions, as on a new phone. */
+const fresh = isOn("profile");
+
 const initial = (): State => ({
   clock: KITCHEN.readyAt - 4,
-  // The prototype opens signed in, past permissions: sign-in is out of the current design scope
-  // (Sprint 3). The SignIn / Permissions screens stay in the code; set these back to false to show them.
-  signedIn: true,
-  permsDone: true,
-  location: "always",
-  camera: true,
-  notifications: true,
+  signedIn: !fresh,
+  permsDone: !fresh,
+  location: fresh ? "off" : "always",
+  camera: !fresh,
+  notifications: !fresh,
   shiftOn: false,
   run: 1,
   runLoadedAt: {},
   pickupDone: false,
   bagChecks: {},
   stops: initialStops(),
-  stack: [{ name: "tabs" }],
-  tab: "today",
+  stack: [{ name: fresh ? "signin" : "tabs" }],
+  tab: "map",
   sheet: null,
   toast: null,
   notice: null,
@@ -212,16 +239,18 @@ const initial = (): State => ({
   assignments: INITIAL_ASSIGNMENTS,
   claims: {},
   loaded: {},
+  profilePhoto: null,
   lang: "en",
   online: true,
   pendingSync: 0,
   update: "none",
   push: null,
+  notifPrefs: { requests: true, reminderHours: SETTINGS.requestReminderHours as NotifPrefs["reminderHours"], messages: true, sound: true },
   undo: null,
   inbox: [
     // Newest first, like every message added later.
+    { id: "m3", at: 10 * 60 + 5, from: "dispatch", kind: "request", title: "New assignment · Bayview Health Center", body: "Fri, Oct 9 · ~12:30 PM. Dispatch added it to your schedule.", requestId: "r24", priority: "high" },
     { id: "m2", at: 9 * 60 + 40, from: "dispatch", kind: "reminder", title: "3 delivery requests need your answer", body: "Brightline Health is in less than 48 h.", requestId: "r2", priority: "high" },
-    { id: "m1", at: 7 * 60 + 30, from: "dispatch", kind: "info", title: "Today's route is published", body: "3 deliveries + 1 reusables pickup · kitchen ready 11:12 AM. Load in reverse order.", priority: "medium" },
   ],
   requests: REQUESTS,
   openHours: OPEN_HOURS,
@@ -229,6 +258,7 @@ const initial = (): State => ({
   scanned: {},
   awayFromAddress: false,
   vehicle: { make: "Toyota", model: "Sienna", year: 2019, headcount: 2 },
+  storage: STORAGE_DETAILS,
   vehicleFor: { s2: "v-van2" }, // family-style setup needs the van
   order: null,
   afterSignIn: null,
@@ -297,9 +327,10 @@ function useAppState() {
       toast,
       popup,
 
-      signIn: () => patch((p) => ({ signedIn: true, stack: p.permsDone ? [{ name: "tabs" }, ...(p.afterSignIn ? [p.afterSignIn] : [])] : [{ name: "permissions" }], afterSignIn: p.permsDone ? null : p.afterSignIn })),
+      // Oct 26 2026: sign-in always lands on Route; the first time on this phone, permissions pop up over it.
+      signIn: () => patch((p) => ({ signedIn: true, stack: [{ name: "tabs" }, ...(p.afterSignIn ? [p.afterSignIn] : [])], tab: "map", afterSignIn: null, sheet: p.permsDone ? null : { name: "permissions" } })),
       setPerm: (p: Partial<Pick<State, "location" | "camera" | "notifications">>) => patch(p),
-      finishPerms: () => patch((p) => ({ permsDone: true, stack: [{ name: "tabs" }, ...(p.afterSignIn ? [p.afterSignIn] : [])], tab: "today", afterSignIn: null })),
+      finishPerms: () => patch({ permsDone: true, sheet: null }),
 
       startShift: () =>
         patch((p) => ({ shiftOn: true, shiftStartedAt: p.clock, sheet: null, location: p.location === "off" ? "while" : p.location })),
@@ -320,8 +351,10 @@ function useAppState() {
           clock: p.clock + 8,
           // This run's orders, including ones claimed before the pickup, are loaded.
           loaded: { ...p.loaded, ...Object.fromEntries(runStops(p).map((x) => [x.id, "route" as const])) },
+          // Oct 26 2026: back to Route, with a sheet to start on the first stop (same layout as the "loaded" sheet).
           stack: [{ name: "tabs" }],
-          tab: "today",
+          tab: "map",
+          sheet: nextStop(p) ? { name: "startRoute", id: nextStop(p)!.id } : null,
           ...queued(p),
         })),
 
@@ -370,8 +403,9 @@ function useAppState() {
           clock: prev.clock + 9,
           // #13 / #75: the driver's location is logged with the delivery; away from the address flags dispatch.
           stops: { ...prev.stops, [id]: { ...prev.stops[id], status: "delivered", deliveredAt: prev.clock + 8, deliveredAway: prev.awayFromAddress } },
+          // Oct 26 2026: back to Route with the "delivered" sheet over it, not straight onto the next stop.
           stack: [{ name: "tabs" }],
-          tab: "today",
+          tab: "map",
           sheet: { name: "delivered", id },
           ...queued(prev),
         })),
@@ -420,9 +454,29 @@ function useAppState() {
           return {
             requests: p.requests.map((r) => (r.status === "pending" ? { ...r, remindedAt: p.clock } : r)),
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "reminder", title, body, goto: "schedule", priority: "high" }, ...p.inbox],
-            push: { id: pushSeq++, title, body, tone: "high", open: { name: "tabs" }, schedule: true },
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "tabs" }, schedule: true, cat: "reminder" },
           };
         }),
+      /** Oct 27 2026: "Remind me in 1 h" on a request. The prototype sends that reminder after a few seconds. */
+      remindMeLater: (id: string) => {
+        patch((p) => ({ requests: p.requests.map((r) => (r.id === id ? { ...r, remindedAt: p.clock + 60 - p.notifPrefs.reminderHours * 60 } : r)) }));
+        toast("We'll remind you in 1 h");
+        window.setTimeout(
+          () =>
+            patch((p) => {
+              const r = p.requests.find((x) => x.id === id);
+              if (!r || r.status !== "pending") return {};
+              const title = `Reminder · ${r.name} needs your answer`;
+              const body = `${r.dateLabel} · ~${fmtTime(r.time)}`;
+              return {
+                inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "reminder", title, body, requestId: id, priority: "high" }, ...p.inbox],
+                push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id }, schedule: true, cat: "reminder" },
+              };
+            }),
+          5000,
+        );
+      },
+      setNotifPrefs: (v: Partial<NotifPrefs>) => patch((p) => ({ notifPrefs: { ...p.notifPrefs, ...v } })),
       // Keeps the role of anyone who stays selected, so removing one chip never clears the others' roles.
       setAssignees: (stopId: string, userIds: string[]) =>
         patch((p) => {
@@ -442,6 +496,7 @@ function useAppState() {
         })),
 
       /* ---- Phase 3 ---- */
+      setProfilePhoto: (profilePhoto: string) => patch({ profilePhoto }),
       setLang: (lang: Lang) => patch({ lang, sheet: null }),
       setOnline: (online: boolean) =>
         set((p) => {
@@ -474,6 +529,17 @@ function useAppState() {
         patch({ vehicle });
         toast("Vehicle saved");
       },
+      /** #64: dispatch edits storage details; the driver gets a push and reads them under Me → Vehicle. */
+      setStorage: (storage: string) =>
+        patch((p) => {
+          const title = "Storage details updated";
+          const body = "Set by dispatch · see Vehicle";
+          return {
+            storage,
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "info", title, body, goto: "vehicle", priority: "low" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "medium", open: { name: "vehicle" } },
+          };
+        }),
       sendToDispatch: (text: string) => {
         set((p) => ({ ...p, inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "you", kind: "reply", title: text, priority: "low" }, ...p.inbox], ...queued(p) }));
         toast("Sent to dispatch");
@@ -497,14 +563,34 @@ function useAppState() {
           // Answered from the Requests list: stay there. Otherwise back to the Schedule tab.
           const onList = p.stack.at(-1)?.name === "requests";
           // Accepting is one tap, so it gets an Undo snackbar instead of a confirmation pop-up.
-          const undo = status === "accepted" ? { id, name: r.name, seq: undoSeq++ } : p.undo;
+          const undo = status === "accepted" ? { ids: [id], name: r.name, seq: undoSeq++ } : p.undo;
           return { ...p, sheet: null, requests, undo, ...(onList ? {} : { stack: [{ name: "tabs" }] as Screen[], tab: "schedule" as Tab }), ...queued(p) };
         });
         if (status === "declined") popup("Sent to dispatch", "They'll reassign it");
       },
-      /** Undo snackbar: the request goes back to waiting for an answer. */
+      /**
+       * Oct 26 2026: accept every request in the list at once (drivers can stack up 15 in a week). The sheet has already
+       * shown the date range and had the driver confirm it. Same-day ones join today's route, as with a single accept.
+       */
+      acceptAll: (ids: string[]) =>
+        set((p) => {
+          const picked = p.requests.filter((r) => ids.includes(r.id) && r.status === "pending");
+          const sameDay = picked.filter((r) => r.orderId).map((r) => r.orderId!);
+          return {
+            ...p,
+            sheet: null,
+            requests: p.requests.map((x) => (picked.includes(x) ? { ...x, status: "accepted" as const } : x)),
+            claims: { ...p.claims, ...Object.fromEntries(sameDay.map((o) => [o, { by: DRIVER.id, at: p.clock }])) },
+            assignments: { ...p.assignments, ...Object.fromEntries(sameDay.map((o) => [o, [{ userId: DRIVER.id }]])) },
+            undo: { ids: picked.map((r) => r.id), name: `${picked.length} requests`, seq: undoSeq++ },
+            ...queued(p),
+          };
+        }),
+      /** Undo snackbar: the request(s) go back to waiting for an answer. */
       undoAccept: () =>
-        patch((p) => (p.undo ? { requests: p.requests.map((x) => (x.id === p.undo!.id ? { ...x, status: "pending" as const } : x)), undo: null } : {})),
+        patch((p) => (p.undo ? { requests: p.requests.map((x) => (p.undo!.ids.includes(x.id) ? { ...x, status: "pending" as const } : x)), undo: null } : {})),
+      /** The driver opened a dispatch assignment: it stops showing as New. */
+      seeAssignment: (id: string) => patch((p) => (p.requests.some((r) => r.id === id && r.unseen) ? { requests: p.requests.map((x) => (x.id === id ? { ...x, unseen: false } : x)) } : {})),
       dismissUndo: () => patch({ undo: null }),
       /** Dispatch sends an unassigned order to a driver as a same-day request. */
       sendOrderRequest: (orderId: string) =>
@@ -519,7 +605,7 @@ function useAppState() {
             ...p,
             requests: [...p.requests, r],
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "request", title, body, requestId: id, priority: "high" }, ...p.inbox],
-            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id }, schedule: true },
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id }, schedule: true, cat: "request" },
           };
         }),
       /** Stands in for another driver's phone accepting a request. */
@@ -549,24 +635,24 @@ function useAppState() {
           else vehicleFor[stopId] = vehicleId;
           return { vehicleFor };
         }),
-      /** #53: actual counts + photo. A pickup stop is done when collected; on a delivery it's an add-on. */
-      /** Missing items aren't noted here: the collect screen opens the problem flow for them (Oct 21 2026). */
-      collectReusables: (id: string, counts: Record<string, number>, photos: number, note?: string) =>
+      /** #53: collected or not (Oct 26 2026), with notes and a photo. A pickup stop is done either way; on a delivery it's an add-on. */
+      collectReusables: (id: string, result: "collected" | "not_collected", photos: number, note?: string) =>
         set((p) => {
           const stop = findStop(p, id);
           // Collected during the delivery at the same address: it's done, but the driver stays on that delivery.
           const alongside = !!pickupDelivery(p, stop);
           const pickup = stop.kind === "pickup" && !alongside;
           const st = p.stops[id];
+          const stops = {
+            ...p.stops,
+            [id]: { ...st, collectResult: result, collectPhotos: photos, collectNote: note, collectDraft: undefined, returnsCollected: true, ...(stop.kind === "pickup" ? { status: "delivered" as const, deliveredAt: p.clock + (pickup ? 5 : 0), deliveredAway: p.awayFromAddress } : {}) },
+          };
           return {
             ...p,
             clock: p.clock + (pickup ? 6 : 0),
-            stops: {
-              ...p.stops,
-              [id]: { ...st, collected: counts, collectPhotos: photos, collectNote: note, collectDraft: undefined, returnsCollected: true, ...(stop.kind === "pickup" ? { status: "delivered" as const, deliveredAt: p.clock + (pickup ? 5 : 0), deliveredAway: p.awayFromAddress } : {}) },
-            },
-            stack: pickup ? [{ name: "tabs" }] : p.stack.filter((x) => x.name !== "collect"),
-            tab: pickup ? "today" : p.tab,
+            stops,
+            stack: pickup ? [{ name: "tabs" as const }] : p.stack.filter((x) => x.name !== "collect"),
+            tab: pickup ? "map" : p.tab,
             sheet: pickup ? { name: "delivered", id } : null,
             ...queued(p),
           };
@@ -585,7 +671,7 @@ function useAppState() {
         set((p) => ({
           ...p,
           inbox: [{ ...m, id: `m${++msgSeq}`, at: p.clock, from: "dispatch" }, ...p.inbox],
-          push: { id: pushSeq++, title: m.title, body: m.body ?? "", tone: m.priority === "high" ? "high" : "medium", open },
+          push: { id: pushSeq++, title: m.title, body: m.body ?? "", tone: m.priority === "high" ? "high" : "medium", open, cat: m.priority === "high" ? undefined : "message" },
         })),
       changeTime: (id: string, mins: number) =>
         set((p) => {
@@ -627,6 +713,23 @@ function useAppState() {
             push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id } },
           };
         }),
+      /**
+       * Oct 26 2026: dispatch assigns a delivery outright. The driver has no say, so there's no Accept: it lands on the
+       * schedule as accepted, flagged New, with a push and an inbox message so they know even though they didn't accept it.
+       */
+      assignDelivery: () =>
+        set((p) => {
+          if (p.requests.some((r) => r.id === "r25")) return p;
+          const r: DeliveryRequest = { id: "r25", orderNo: "ORD-3204", name: "Dogpatch Studios", address: "991 Tennessee St", dateISO: "2026-10-13", dateLabel: "Tue, Oct 13", time: 11 * 60 + 15, meals: 18, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", assigned: true, unseen: true, sentAt: `Today ${fmtTime(p.clock)}` };
+          const title = `New assignment · ${r.name}`;
+          const body = `${r.dateLabel} · ~${fmtTime(r.time)}. Dispatch added it to your schedule.`;
+          return {
+            ...p,
+            requests: [...p.requests, r],
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "request", title, body, requestId: r.id, priority: "high" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id: r.id }, schedule: true },
+          };
+        }),
       /** #19: dispatch sends a new delivery request. */
       sendRequest: () =>
         set((p) => {
@@ -638,7 +741,7 @@ function useAppState() {
             ...p,
             requests: [...p.requests, r],
             inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "request", title, body, requestId: r.id, priority: "high" }, ...p.inbox],
-            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id: r.id }, schedule: true },
+            push: { id: pushSeq++, title, body, tone: "high", open: { name: "request", id: r.id }, schedule: true, cat: "request" },
           };
         }),
       /** #74: SFK office marks a stop for a driver without the app. */
@@ -669,10 +772,8 @@ function useAppState() {
           ...p,
           stops: { ...p.stops, [id]: { ...p.stops[id], status: "delivered", deliveredAt: p.clock, officeOverride: true, handoff: "handed", receivedBy: "Marked at SFK office" } },
         })),
-      resetDemo: () =>
-        set(() => {
-          return initial();
-        }),
+      // Starts the day again but stays signed in, in the same language (sign-in is shown once per page load).
+      resetDemo: () => set((p) => ({ ...initial(), signedIn: true, permsDone: true, location: p.location === "off" ? "always" : p.location, camera: true, notifications: true, lang: p.lang, stack: [{ name: "tabs" }] })),
       jump: (fn: (s: State) => Partial<State>) => patch(fn),
     }),
     [patch, patchStop, toast, popup],

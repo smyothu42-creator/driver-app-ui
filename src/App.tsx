@@ -3,18 +3,19 @@ import { CalendarDays, Check, Headphones, Minimize2, Route as RouteIcon, Smartph
 import { AppProvider, runStops, useApp, useT, type Tab } from "./store";
 import { PhoneFrame } from "./components/PhoneFrame";
 import { cn, SfkMark } from "./components/ui";
-import { SignIn, Permissions } from "./screens/Onboarding";
-import { Today } from "./screens/Today";
+import { SignIn } from "./screens/Onboarding";
 import { PackageScreen, Pickup } from "./screens/Pickup";
 import { StopDetail } from "./screens/StopDetail";
 import { Navigate } from "./screens/Navigate";
 import { CameraScreen, ProofScreen } from "./screens/Proof";
 import { History, Me, RouteTab, Tracking } from "./screens/Tabs";
+import { KitchenScreen } from "./screens/Today";
 import { RequestDetail, RequestsScreen, ScheduleTab } from "./screens/Schedule";
 import { Inbox } from "./screens/Inbox";
 import { ProblemFlow } from "./screens/Problem";
 import { PublicPage, ScanScreen } from "./screens/Scan";
 import { VehicleScreen } from "./screens/Vehicle";
+import { NotificationSettings } from "./screens/NotificationSettings";
 import { OfflineBar, PushBanner, SwipeAway, UndoSnackbar, UpdateGate } from "./components/SystemLayer";
 import { Sheets } from "./screens/Sheets";
 import { AvailabilityScreen } from "./screens/Availability";
@@ -24,7 +25,6 @@ import { AREAS, hiddenArea, isOn, laterFor } from "./data/sprints";
 import { DispatchPage } from "./components/DispatchPage";
 
 const TABS: { id: Tab; label: string; icon: typeof RouteIcon | typeof SfkMark }[] = [
-  { id: "today", label: "Home", icon: SfkMark },
   { id: "map", label: "Route", icon: RouteIcon },
   { id: "schedule", label: "Schedule", icon: CalendarDays },
   // History moved out of the tab bar (Oct 15 2026). It goes in the Me / profile page when Profile is designed (Sprint 3).
@@ -35,9 +35,10 @@ function TabBar() {
   const { s, a } = useApp();
   const t = useT();
   // #18: pending requests show as a count on the Schedule tab.
-  const pending = laterFor("schedule") ? 0 : s.requests.filter((r) => r.status === "pending").length;
+  // Requests to answer, plus dispatch assignments not opened yet (Oct 26 2026).
+  const pending = laterFor("schedule") ? 0 : s.requests.filter((r) => r.status === "pending" || (r.unseen && r.status === "accepted")).length;
   return (
-    <nav aria-label="Main" className="grid grid-cols-4 border-t border-border bg-card px-1 pb-7 pt-1.5">
+    <nav aria-label="Main" className="grid grid-cols-3 border-t border-border bg-card px-1 pb-7 pt-1.5">
       {TABS.map(({ id, label, icon: I }) => {
         const on = s.tab === id;
         return (
@@ -60,6 +61,7 @@ function TabBar() {
 
 function Screens({ full }: { full: boolean }) {
   const { s, a } = useApp();
+  const t = useT();
   const top = s.stack[s.stack.length - 1];
   const key = s.stack.map((x) => x.name + ("id" in x ? x.id : "")).join("/") + s.tab;
   // Tab bar hides while scrolling down and comes back on any scroll up (LinkedIn-style). Always shown on a new screen.
@@ -91,11 +93,11 @@ function Screens({ full }: { full: boolean }) {
     case "signin":
       body = <SignIn />;
       break;
-    case "permissions":
-      body = <Permissions />;
-      break;
     case "pickup":
       body = <Pickup id={top.id} />;
+      break;
+    case "kitchen":
+      body = <KitchenScreen />;
       break;
     case "package":
       body = <PackageScreen id={top.id} />;
@@ -110,7 +112,7 @@ function Screens({ full }: { full: boolean }) {
       body = <Navigate id={top.id} />;
       break;
     case "camera":
-      body = <CameraScreen id={top.id} />;
+      body = <CameraScreen id={top.id} kind={top.kind} />;
       break;
     case "proof":
       body = <ProofScreen id={top.id} />;
@@ -136,6 +138,12 @@ function Screens({ full }: { full: boolean }) {
     case "vehicle":
       body = <VehicleScreen />;
       break;
+    case "notifSettings":
+      body = <NotificationSettings />;
+      break;
+    case "history":
+      body = <History onBack={a.back} />;
+      break;
     case "publicPage":
       body = <PublicPage id={top.id} />;
       break;
@@ -143,7 +151,7 @@ function Screens({ full }: { full: boolean }) {
       body = <AvailabilityScreen />;
       break;
     case "tabs":
-      body = { today: <Today />, map: <RouteTab />, schedule: <ScheduleTab />, history: <History />, me: <Me /> }[s.tab];
+      body = { map: <RouteTab />, schedule: <ScheduleTab />, history: <History />, me: <Me /> }[s.tab];
       break;
   }
 
@@ -153,10 +161,10 @@ function Screens({ full }: { full: boolean }) {
     const stopId = "id" in top ? top.id : undefined;
     // Prototype only: skip a hidden step so the route can still be walked end to end.
     const skip =
-      hidden === "kitchen" && (top.name === "scan" || top.name === "pickup" || top.name === "package")
+      hidden === "kitchen" && (top.name === "scan" || top.name === "pickup" || top.name === "package" || top.name === "kitchen")
         ? {
             label: "Skip for now · mark route loaded",
-            run: () => a.jump((p) => ({ pickupDone: true, pickupAt: p.pickupAt ?? p.clock, runLoadedAt: { ...p.runLoadedAt, [p.run]: p.pickupAt ?? p.clock }, bagChecks: { ...p.bagChecks, ...Object.fromEntries(runStops(p).flatMap((x) => x.bags.map((b) => [b.id, true]))) }, stack: [{ name: "tabs" }], tab: "today" })),
+            run: () => a.jump((p) => ({ pickupDone: true, pickupAt: p.pickupAt ?? p.clock, runLoadedAt: { ...p.runLoadedAt, [p.run]: p.pickupAt ?? p.clock }, bagChecks: { ...p.bagChecks, ...Object.fromEntries(runStops(p).flatMap((x) => x.bags.map((b) => [b.id, true]))) }, stack: [{ name: "tabs" }], tab: "map" })),
           }
         : stopId && (top.name === "camera" || top.name === "proof" || top.name === "collect")
           ? {
@@ -169,14 +177,14 @@ function Screens({ full }: { full: boolean }) {
 
   const isTabs = top.name === "tabs";
   const statusTop =
-    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "today" || ((s.tab === "schedule" || s.tab === "map") && !hidden)) ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : isTabs && s.tab === "history" ? "teal" : "light";
+    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "schedule" || s.tab === "map") && !hidden ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : (isTabs && s.tab === "history") || top.name === "history" ? "teal" : "light";
 
   return (
     <PhoneFrame
       top={statusTop}
       full={full}
-      // Navigation is Google Maps: iOS shows "◀ SFK Driver" to switch back to the app (lands on Home).
-      backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }], tab: "today", sheet: null })) } : undefined}
+      // Navigation is Google Maps: iOS shows "◀ SFK Driver" to switch back to the app (Oct 26 2026: lands on the stop's details page).
+      backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }, { name: "stop", id: top.id }], tab: "map", sheet: null })) } : undefined}
     >
       <div className="flex h-full flex-col">
         <OfflineBar />
@@ -206,7 +214,7 @@ function Screens({ full }: { full: boolean }) {
                 <Check className="size-4" strokeWidth={3} />
               </span>
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[15px] font-semibold">{s.notice?.title ?? s.toast}</span>
+                <span className="block truncate text-[15px] font-semibold">{t(s.notice?.title ?? s.toast ?? "")}</span>
                 {s.notice?.body && <span className="mt-0.5 block truncate text-[13px] text-white/70">{s.notice.body}</span>}
               </span>
             </div>

@@ -1,0 +1,78 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 775 >>
+stream
+BT
+56 790 Td
+/F2 22 Tf
+(Mirendil Inc - Delivery details) Tj
+0 -22 Td
+/F1 11.5 Tf
+(88 King St, San Francisco, CA 94107) Tj
+0 -16 Td
+0 -14 Td
+/F2 14 Tf
+0.0 0.25 0.27 rg
+(Parking) Tj
+0 0 0 rg
+0 -19 Td
+/F1 11.5 Tf
+(15-min loading zone in front, on King St.) Tj
+0 -16 Td
+0 -14 Td
+/F2 14 Tf
+0.0 0.25 0.27 rg
+(Get in) Tj
+0 0 0 rg
+0 -19 Td
+/F1 11.5 Tf
+(Street parking is tight. 15-min loading zone in front of the building on King St.) Tj
+0 -16 Td
+0 -14 Td
+/F2 14 Tf
+0.0 0.25 0.27 rg
+(Delivery instructions) Tj
+0 0 0 rg
+0 -19 Td
+/F1 11.5 Tf
+(Team lunch for 20. Please set up in conference room 4B before 12:15. Ask front) Tj
+0 -16 Td
+/F1 11.5 Tf
+(desk for Jordan.) Tj
+0 -16 Td
+0 -8 Td
+/F1 11.5 Tf
+(Sample for the prototype. SFK supplies the real PDF for this address.) Tj
+0 -16 Td
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000001077 00000 n 
+0000001147 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+1222
+%%EOF

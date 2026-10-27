@@ -10,7 +10,7 @@ import { MapView, along, type Pin } from "../components/MapView";
  * #3 navigation (Oct 21 2026): turn-by-turn hands off to Google Maps, so this screen IS Google Maps in the prototype:
  * green turn card (next turn + "Then"), blue route and chevron, round map buttons, current speed, and the white ETA
  * sheet with exit and routes. Turns come from the real leg geometry. iOS's "◀ SFK Driver" in the status bar (App.tsx)
- * goes back to the app, where Home has "Slide when you arrive". At the end Google's "You've arrived" sheet shows.
+ * goes back to the app, where the stop's details page has "Slide when you arrive". At the end Google's "You've arrived" sheet shows.
  */
 
 const GREEN = "#1B7D3F"; // Google Maps navigation banner
@@ -78,7 +78,8 @@ export function Navigate({ id }: { id: string }) {
   const speed = arrived ? 0 : 18 + Math.round(10 * Math.abs(Math.sin(progress * 9))); // mph, just for the gauge
 
   const pins: Pin[] = [{ id: stop.id, at: stop.at, label: String(stop.seq), state: "active" }];
-  const exit = () => a.jump(() => ({ stack: [{ name: "tabs" }], tab: "today", sheet: null })); // leaving Google Maps → the app
+  // Leaving Google Maps → back to the stop's details page in the app (Oct 26 2026: not Home), to slide when arrived.
+  const exit = () => a.jump(() => ({ stack: [{ name: "tabs" }, { name: "stop", id: stop.id }], tab: "map", sheet: null }));
 
   return (
     <div className="relative h-full overflow-hidden bg-[#F1F3F4]" style={font}>

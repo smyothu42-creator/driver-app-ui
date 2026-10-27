@@ -1,10 +1,12 @@
-import { Bell, CalendarOff, Car, CheckCircle2, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, MapPin, Navigation, RadioTower, RotateCcw } from "lucide-react";
-import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm } from "../store";
+import { Bell, BellRing, CalendarOff, Camera, Car, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, Navigation, RadioTower, RotateCcw, ShieldAlert, Smartphone, History as HistoryIcon } from "lucide-react";
+import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm, type NotifPrefs } from "../store";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_DATE, ROUTE_ISO, SETTINGS, KITCHEN_READY, driveBetween, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
 import type { Availability } from "../data/availability";
-import { Badge, Button, Card, cn, IconChip, SectionLabel, SegmentBar, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
+import { DutyCard, HeaderActions } from "./Today";
+import { Badge, Button, Card, cn, IconChip, SectionLabel, SfkMark, StatusText, StopAvatar, Toggle, TopBar, WorkTags } from "../components/ui";
 import { MapView, type Pin } from "../components/MapView";
+import driverPhoto from "../assets/driver-photo.jpg";
 import { DeliveryScene } from "../components/Illustrations";
 import { RouteTimeline } from "./Today";
 
@@ -76,20 +78,21 @@ function useDragRail(rail: React.RefObject<HTMLDivElement | null>, step: number,
  * Same mint header + white panel as Schedule. MapTab below is kept for when the map comes back.
  */
 export function RouteTab() {
-  const { s } = useApp();
   const t = useT();
-  const live = liveRoute(s); // same count as Home's "N of M delivered"
-  const delivered = live.filter((x) => s.stops[x.id].status === "delivered").length;
   return (
     <div className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
       <div className="bg-[#CFE8E8] px-4 pb-8 pt-1 text-teal-deep">
-        <h1 className="px-1 text-2xl font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
-        {/* Date and progress, with the same bar as Home's duty card, exactly as wide as the line (white track on the mint). */}
-        <div className="mt-0.5 inline-block px-1">
-          <p className="nums whitespace-nowrap text-[15px] font-semibold text-teal-deep/80">
-            {ROUTE_DATE} · {delivered} {t("of")} {live.length} {t("delivered")}
-          </p>
-          <SegmentBar done={delivered} total={live.length} track="bg-white" className="mt-1.5" />
+        {/* Title and date on the left; the Requests / Inbox pill centred on both, so it sits a little lower. */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 px-1">
+            <h1 className="text-2xl font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
+            <p className="nums mt-0.5 text-[15px] font-semibold text-teal-deep/80">{ROUTE_DATE}</p>
+          </div>
+          <HeaderActions />
+        </div>
+        {/* Oct 26 2026: Home is gone; its duty card (status, progress, next-step button) opens the Route tab. */}
+        <div className="mt-3">
+          <DutyCard />
         </div>
       </div>
       {/* Rows and title bands run edge to edge, so the panel has no side padding; its rounded top clips the first band. */}
@@ -260,11 +263,10 @@ export function MapTab() {
                 </div>
                 <address className="mt-2 text-[15px] not-italic leading-snug text-muted-foreground">
                   <span className="block font-medium text-foreground">{KITCHEN.name}</span>
-                  <span className="block">{KITCHEN.dock}</span>
                   <span className="block">{KITCHEN.addressLine1}</span>
                 </address>
                 <div className="nums mt-2 text-[15px] font-semibold text-teal-deep">
-                  {done && loadedAt != null ? `Loaded ${fmtTime(loadedAt)}` : `Ready ${fmtTime(KITCHEN_READY[it.run] ?? KITCHEN.readyAt)}`}
+                  {done && loadedAt != null ? `Loaded ${fmtTime(loadedAt)}` : `Dispatch ready ${fmtTime(KITCHEN_READY[it.run] ?? KITCHEN.readyAt)}`}
                 </div>
                 {!done && <DriveLine it={it} />}
               </Card>
@@ -324,14 +326,21 @@ function StatusTag({ stop, next }: { stop: Stop; next: boolean }) {
  * Same frame as Home: a dark teal header with the title and the 30-day numbers, then light sections.
  * Rows put the time/result on the right (like the route list) and pair colour with an icon + word.
  */
-export function History() {
+/** Past deliveries. Opened from Me (with Back) since History left the tab bar (Oct 15 2026). */
+export function History({ onBack }: { onBack?: () => void }) {
   const { s, a } = useApp();
+  const t = useT();
   const done = useRoute().filter((x) => s.stops[x.id].status === "delivered");
   return (
     <div>
       <div data-dark-surface className="bg-teal-deep px-5 pb-5 pt-4 text-white">
-        <p className="text-2xs font-semibold text-sidebar-muted">Last 30 days</p>
-        <h1 className="mt-0.5 text-xl font-bold tracking-tight">History</h1>
+        {onBack && (
+          <button onClick={onBack} aria-label={t("Back")} className="-ml-2 mb-2 grid size-11 place-items-center rounded-full active:bg-sidebar-active">
+            <ChevronLeft className="size-6" />
+          </button>
+        )}
+        <p className="text-2xs font-semibold text-sidebar-muted">{t("Last 30 days")}</p>
+        <h1 className="mt-0.5 text-xl font-bold tracking-tight">{t("History")}</h1>
         <div className="mt-4 grid grid-cols-3 gap-2">
           {[
             ["98%", "On time"],
@@ -340,7 +349,7 @@ export function History() {
           ].map(([v, l]) => (
             <div key={l} className="rounded-2xl bg-sidebar-active/60 px-3 py-3 text-center">
               <div className="nums text-2xl font-bold leading-none tracking-tight">{v}</div>
-              <div className="mt-1.5 text-2xs font-semibold text-sidebar-muted">{l}</div>
+              <div className="mt-1.5 text-2xs font-semibold text-sidebar-muted">{t(l)}</div>
             </div>
           ))}
         </div>
@@ -348,9 +357,9 @@ export function History() {
 
       <div className="space-y-5 px-4 pb-6 pt-4">
         <section>
-          <SectionLabel>Today</SectionLabel>
+          <SectionLabel>{t("Today")}</SectionLabel>
           {done.length === 0 ? (
-            <Card className="p-6 text-center text-[13px] text-muted-foreground">Delivered stops and photos show here.</Card>
+            <Card className="p-6 text-center text-[13px] text-muted-foreground">{t("Delivered stops and photos show here.")}</Card>
           ) : (
             <Card className="divide-y divide-border overflow-hidden">
               {done.map((x) => {
@@ -367,7 +376,7 @@ export function History() {
                     </span>
                     <span className="shrink-0 text-right">
                       <span className="nums block text-[15px] font-semibold leading-tight">{fmtTime(at)}</span>
-                      <ResultTag ok={onTime}>{onTime ? "On time" : `${at - x.windowEnd} min late`}</ResultTag>
+                      <ResultTag ok={onTime}>{onTime ? t("On time") : `${at - x.windowEnd} min ${t("late")}`}</ResultTag>
                     </span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                   </button>
@@ -378,7 +387,7 @@ export function History() {
         </section>
 
         <section>
-          <SectionLabel>Earlier</SectionLabel>
+          <SectionLabel>{t("Earlier")}</SectionLabel>
           <Card className="divide-y divide-border">
             {PAST.map((d) => {
               const ok = d.onTime === d.stops;
@@ -387,14 +396,14 @@ export function History() {
                   <div className="min-w-0 flex-1">
                     <div className="text-[15px] font-semibold leading-tight">{d.date}</div>
                     <div className="nums mt-0.5 text-[13px] text-muted-foreground">
-                      {d.stops} stops · {d.meals} meals
+                      {d.stops} {t("stops")}
                     </div>
                   </div>
                   <span className="shrink-0 text-right">
                     <span className="nums block text-[15px] font-semibold leading-tight">
                       {d.onTime}/{d.stops}
                     </span>
-                    <ResultTag ok={ok}>{ok ? "All on time" : `${d.stops - d.onTime} late`}</ResultTag>
+                    <ResultTag ok={ok}>{ok ? t("All on time") : `${d.stops - d.onTime} ${t("late")}`}</ResultTag>
                   </span>
                 </div>
               );
@@ -427,63 +436,118 @@ export function Me() {
     <div>
       <TopBar title={t("Me")} />
       <div className="space-y-5 px-4 py-4">
+        {/* #7: the driver signs in on their own phone and stays signed in there. */}
         <Card className="flex items-center gap-3 p-4">
-          <span className="grid size-14 place-items-center rounded-full bg-yellow text-[17px] font-bold text-teal-deep">{DRIVER.initials}</span>
+          {/* Oct 26 2026: the driver's photo; tap it to change (camera or library). The same photo shows on Route. */}
+          <label className="relative size-14 shrink-0 cursor-pointer" aria-label={t("Change profile photo")}>
+            <img src={s.profilePhoto ?? driverPhoto} alt={DRIVER.name} className="size-14 rounded-full object-cover" />
+            <span className="absolute -bottom-0.5 -right-0.5 grid size-6 place-items-center rounded-full border-2 border-card bg-teal text-white" aria-hidden>
+              <Camera className="size-3.5" />
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  a.setProfilePhoto(URL.createObjectURL(f));
+                  a.toast(t("Profile photo updated"));
+                }
+              }}
+            />
+          </label>
           <div className="min-w-0 flex-1">
             <div className="text-[17px] font-semibold tracking-tight">{DRIVER.name}</div>
             <div className="text-2xs text-muted-foreground">
-              {DRIVER.type} driver · {DRIVER.phone}
+              {t(`${DRIVER.type} driver`)} · {DRIVER.phone}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1 text-2xs font-semibold text-teal">
+              <Smartphone className="size-3.5" /> {t("Signed in on this phone")}
             </div>
           </div>
         </Card>
 
         <section>
-          <SectionLabel>{t("Ready")}</SectionLabel>
+          <SectionLabel>{t("Duty")}</SectionLabel>
           <Card className="divide-y divide-border">
-            {/* #8 / #78: one Ready (on duty) toggle. While on, dispatch sees the driver's live location. */}
+            {/* #8 / #78: one Ready (on duty) toggle. While on, dispatch sees the driver's live location (#5); off stops it at once. */}
             <div className="flex items-center gap-3 p-4">
               <IconChip tone={s.shiftOn ? "success" : "teal"}>
                 <RadioTower />
               </IconChip>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold">{s.shiftOn ? t("Ready") : t("Not ready")}</div>
-                <div className="text-2xs text-muted-foreground">{s.shiftOn ? `On duty since ${fmtTime(s.shiftStartedAt!)} · location on` : "Off duty · location off"}</div>
+                <div className="font-semibold">{s.shiftOn ? t("On duty") : t("Off duty")}</div>
+                <div className="text-2xs text-muted-foreground">{s.shiftOn ? `${t("Since")} ${fmtTime(s.shiftStartedAt!)} · ${t("location on")}` : t("Location off")}</div>
               </div>
-              <Toggle on={s.shiftOn} label={t("Ready")} onChange={(v) => a.openSheet({ name: v ? "startShift" : "endShift" })} />
+              <Toggle on={s.shiftOn} label={t("On duty")} onChange={(v) => a.openSheet({ name: v ? "startShift" : "endShift" })} />
             </div>
-            <Row icon={<MapPin />} title={t("Location sharing")} sub={s.shiftOn ? "Live with SFK dispatch" : "Paused · off duty"} onClick={() => a.push({ name: "tracking" })} />
+          </Card>
+        </section>
+
+        {/* Oct 27 2026: language and notifications up front, not buried in Support. Language switches in one tap. */}
+        <section>
+          <SectionLabel>{t("Settings")}</SectionLabel>
+          <Card className="divide-y divide-border">
+            <div className="p-4">
+              <div className="flex items-center gap-3">
+                <IconChip>
+                  <Languages />
+                </IconChip>
+                <div className="min-w-0 flex-1 font-semibold">Language · Idioma</div>
+              </div>
+              <div role="radiogroup" aria-label="Language" className="mt-3 grid grid-cols-2 gap-1 rounded-full border border-border-strong bg-white p-1">
+                {(
+                  [
+                    ["en", "English"],
+                    ["es", "Español"],
+                  ] as const
+                ).map(([v, l]) => (
+                  <button key={v} role="radio" aria-checked={s.lang === v} onClick={() => a.setLang(v)} className={cn("h-11 rounded-full text-[15px] font-semibold transition-colors", s.lang === v ? "bg-teal-deep text-white" : "text-foreground/70")}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Row icon={<BellRing />} title={t("Notifications")} sub={notifSummary(s.notifPrefs, t)} onClick={() => a.push({ name: "notifSettings" })} />
           </Card>
         </section>
 
         <section>
-          <SectionLabel>Work</SectionLabel>
+          <SectionLabel>{t("Work")}</SectionLabel>
           <Card className="divide-y divide-border">
-            <Row icon={<Car />} title={t("Vehicle")} sub={`Default: ${s.vehicle.year} ${s.vehicle.make} ${s.vehicle.model}${changed ? ` · ${changed} ${changed === 1 ? "delivery" : "deliveries"} in an SFK van` : ""}`} onClick={() => a.push({ name: "vehicle" })} />
-            <Row icon={<CalendarOff />} title={t("Time off")} sub={availabilitySummary(s.availability)} onClick={() => a.push({ name: "availability" })} />
+            <Row icon={<Car />} title={t("Vehicle")} sub={`${s.vehicle.year} ${s.vehicle.make} ${s.vehicle.model}${changed ? ` · ${changed} ${t(changed === 1 ? "delivery in an SFK van" : "deliveries in an SFK van")}` : ""}`} onClick={() => a.push({ name: "vehicle" })} />
+            <Row icon={<CalendarOff />} title={t("Time off")} sub={availabilitySummary(s.availability, t)} onClick={() => a.push({ name: "availability" })} />
+            <Row icon={<HistoryIcon />} title={t("History")} sub={t("Past deliveries and photos")} onClick={() => a.push({ name: "history" })} />
           </Card>
         </section>
 
         <section>
-          <SectionLabel>Support</SectionLabel>
+          <SectionLabel>{t("Support")}</SectionLabel>
           <Card className="divide-y divide-border">
-            <Row icon={<Bell />} title={t("Inbox")} sub={unread ? `${unread} unread from dispatch` : "All read"} onClick={() => a.push({ name: "inbox" })} />
-            <Row icon={<Headphones />} title={t("Call dispatch")} sub={`${DISPATCH.name} · ${DISPATCH.phone}`} onClick={() => a.toast(`Calling ${DISPATCH.name}…`)} />
-            <Row icon={<Languages />} title={t("Language")} sub={s.lang === "es" ? "Español" : "English"} onClick={() => a.openSheet({ name: "language" })} />
-            <Row icon={<CircleHelp />} title="Driver handbook" sub="Food safety, hot/cold rules, escalation" />
+            <Row icon={<Bell />} title={t("Inbox")} sub={unread ? `${unread} ${t("unread from dispatch")}` : t("All read")} onClick={() => a.push({ name: "inbox" })} />
+            <Row icon={<Headphones />} title={t("Call dispatch")} sub={`${DISPATCH.name} · ${DISPATCH.phone}`} onClick={() => a.toast(`${t("Calling")} ${DISPATCH.name}…`)} />
+            <Row icon={<CircleHelp />} title={t("Driver handbook")} sub={t("Food safety, hot/cold rules, escalation")} />
+            {/* #24: the store auto-updates the app; a version SFK marks as required blocks the app (UpdateGate). */}
             <Row
               icon={<Download />}
-              title={`Version ${SETTINGS.appVersion}`}
-              sub={s.update === "none" ? "Up to date" : "Update available"}
+              title={`${t("Version")} ${SETTINGS.appVersion}`}
+              sub={s.update === "none" ? t("Up to date · updates install automatically") : t("Update available")}
               onClick={s.update === "none" ? undefined : () => a.openSheet({ name: "update" })}
             />
           </Card>
         </section>
 
+        <Card>
+          <Row icon={<LogOut />} title={t("Sign out")} sub={t("Goes off duty and stops location")} onClick={() => a.jump(() => ({ signedIn: false, shiftOn: false, sheet: null, stack: [{ name: "signin" }] }))} />
+        </Card>
+
         <section>
           <SectionLabel>Prototype</SectionLabel>
           <Card className="divide-y divide-border">
+            <Row icon={<Download />} title="Show update prompt" sub="A new version is out: Update now / After this route" onClick={() => a.setUpdate("optional")} />
+            <Row icon={<ShieldAlert />} title="Require an update" sub="An old version is blocked until it updates" onClick={() => a.setUpdate("required")} />
             <Row icon={<RotateCcw />} title="Reset demo route" sub="Start the day again from kitchen pickup" onClick={a.resetDemo} />
-            <Row icon={<LogOut />} title="Sign out" sub="Back to the sign-in screen" onClick={() => a.jump(() => ({ signedIn: false, shiftOn: false, stack: [{ name: "signin" }] }))} />
           </Card>
         </section>
       </div>
@@ -491,13 +555,19 @@ export function Me() {
   );
 }
 
+/** One-line summary of the notification settings for the Me tab row. */
+function notifSummary(p: NotifPrefs, t: (text: string) => string) {
+  const off = [!p.requests && t("requests off"), !p.messages && t("messages off"), !p.sound && t("silent")].filter(Boolean);
+  return [`${t("Reminders every")} ${p.reminderHours} h`, ...off].join(" · ");
+}
+
 /** One-line summary of upcoming restrictions for the Me tab row. */
-function availabilitySummary(av: Availability) {
+function availabilitySummary(av: Availability, t: (text: string) => string) {
   const upcoming = Object.entries(av).filter(([iso]) => iso >= ROUTE_ISO);
   const off = upcoming.filter(([, d]) => d.status === "unavailable").length;
   const hours = upcoming.filter(([, d]) => d.status === "custom").length;
-  if (!off && !hours) return `None booked · ${SETTINGS.timeOffNoticeDays} days' notice`;
-  return [off && `${off} ${off === 1 ? "day" : "days"} of time off`, hours && `${hours} with set hours`].filter(Boolean).join(" · ");
+  if (!off && !hours) return `${t("None booked")} · ${SETTINGS.timeOffNoticeDays} ${t("days' notice")}`;
+  return [off && `${off} ${t(off === 1 ? "day of time off" : "days of time off")}`, hours && `${hours} ${t("with set hours")}`].filter(Boolean).join(" · ");
 }
 
 function Row({ icon, title, sub, onClick }: { icon: React.ReactNode; title: string; sub: string; onClick?: () => void }) {
@@ -517,15 +587,17 @@ function Row({ icon, title, sub, onClick }: { icon: React.ReactNode; title: stri
 /* ---------------- Location tracking ---------------- */
 export function Tracking() {
   const { s, a } = useApp();
+  const t = useT();
   const next = nextStop(s);
   const opts: { v: LocationPerm; t: string }[] = [
-    { v: "always", t: "Always, while Ready" },
+    { v: "always", t: "Always, while on duty" },
     { v: "while", t: "Only while app is open" },
   ];
   return (
     <div>
-      <TopBar title="Location sharing" onBack={a.back} />
+      <TopBar title={t("Location sharing")} onBack={a.back} />
       <div className="space-y-5 px-4 py-4">
+        {/* #5: live location only while on duty; off duty it stops at once (#8). */}
         <Card className="overflow-hidden">
           <div data-dark-surface className="flex items-center gap-3 bg-teal-deep p-4 text-white">
             <span className="relative grid size-10 place-items-center rounded-full bg-sidebar-active">
@@ -533,38 +605,36 @@ export function Tracking() {
               <Navigation className="relative size-5 text-yellow" />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="font-semibold">{s.shiftOn ? "Ready · sharing live location" : "Not ready · not sharing"}</div>
-              <div className="text-2xs text-sidebar-muted">{s.shiftOn ? "Updates every 15 s · battery saver on" : "Starts when you turn on Ready"}</div>
+              <div className="font-semibold">{s.shiftOn ? t("On duty · sharing live location") : t("Off duty · not sharing")}</div>
+              <div className="text-2xs text-sidebar-muted">{s.shiftOn ? t("Updates every 15 s · battery saver on") : t("Starts when you go on duty")}</div>
             </div>
           </div>
-          <div className="p-4 text-[13px] text-muted-foreground">
-            Location turns on with <b className="font-semibold text-foreground">Ready</b> and stops the moment you turn it off. SFK never tracks you off duty. Each delivery also logs where you were when you marked it delivered.
-          </div>
+          <div className="p-4 text-[13px] text-muted-foreground">{t("Location turns on when you go on duty and stops the moment you go off. SFK never tracks you off duty. Each delivery also logs where you were when you marked it delivered.")}</div>
         </Card>
 
         {/* Review: app times are for comparison only; payroll uses the separate clock-in system. */}
         <div className="flex gap-2.5 rounded-xl border border-border bg-muted p-3 text-[13px]">
           <Clock className="mt-0.5 size-4 shrink-0 text-teal" />
           <span>
-            <b className="font-semibold">This isn't your clock-in.</b> Clock in and out for pay on the SFK time clock as usual. Times in this app are only used to compare against deliveries.
+            <b className="font-semibold">{t("This isn't your clock-in.")}</b> {t("Clock in and out for pay on the SFK time clock as usual. Times in this app are only used to compare against deliveries.")}
           </span>
         </div>
 
         <section>
-          <SectionLabel>Who sees what</SectionLabel>
+          <SectionLabel>{t("Who sees what")}</SectionLabel>
           <Card className="divide-y divide-border">
-            <Who icon={<Eye />} title="SFK dispatch & admin" body="Your live position on the dispatch map, route progress and ETAs for every stop." />
+            <Who icon={<Eye />} title={t("SFK dispatch & admin")} body={t("Your live position on the dispatch map, route progress and ETAs for every stop.")} />
             <Who
               icon={<Eye />}
-              title="The customer you're heading to"
-              body={next ? `Only while you're on the way to them. Right now: ${s.stops[next.id].status === "en_route" ? next.name : "nobody, you're not navigating yet"}.` : "Nobody, your route is done."}
+              title={t("The customer you're heading to")}
+              body={next ? `${t("Only while you're on the way to them. Right now:")} ${s.stops[next.id].status === "en_route" ? next.name : t("nobody, you're not navigating yet")}.` : t("Nobody, your route is done.")}
             />
-            <Who icon={<EyeOff />} title="Other customers" body="See an ETA and “Stop 3 of 4”, never your location." muted />
+            <Who icon={<EyeOff />} title={t("Other customers")} body={t("See an ETA and their stop number, never your location.")} muted />
           </Card>
         </section>
 
         <section>
-          <SectionLabel>Phone permission</SectionLabel>
+          <SectionLabel>{t("Phone permission")}</SectionLabel>
           <Card className="space-y-2 p-3">
             {opts.map((o) => (
               <button
@@ -572,21 +642,25 @@ export function Tracking() {
                 role="radio"
                 aria-checked={s.location === o.v}
                 onClick={() => a.setPerm({ location: o.v })}
-                className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left text-[15px] font-semibold", s.location === o.v ? "border-teal bg-teal-wash" : "border-control")}
+                className={cn("flex min-h-12 w-full items-center gap-3 rounded-xl border p-3 text-left text-[15px] font-semibold", s.location === o.v ? "border-teal bg-teal-wash" : "border-control")}
               >
-                <span className={cn("grid size-5 place-items-center rounded-full border-2", s.location === o.v ? "border-teal bg-teal" : "border-control")}>
+                <span className={cn("grid size-5 shrink-0 place-items-center rounded-full border-2", s.location === o.v ? "border-teal bg-teal" : "border-control")}>
                   {s.location === o.v && <span className="size-2 rounded-full bg-white" />}
                 </span>
-                {o.t}
-                {o.v === "always" && <Badge tone="teal" className="ml-auto">Recommended</Badge>}
+                {t(o.t)}
+                {o.v === "always" && <Badge tone="teal" className="ml-auto">{t("Recommended")}</Badge>}
               </button>
             ))}
           </Card>
         </section>
 
-        {s.shiftOn && (
+        {s.shiftOn ? (
           <Button variant="danger-outline" size="lg" className="w-full" onClick={() => a.openSheet({ name: "endShift" })}>
-            Turn off Ready & stop sharing
+            {t("Go off duty & stop sharing")}
+          </Button>
+        ) : (
+          <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "startShift" })}>
+            {t("Go on duty")}
           </Button>
         )}
       </div>

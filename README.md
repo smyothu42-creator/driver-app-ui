@@ -28,7 +28,7 @@ To stop it, click the Terminal window and press Ctrl + C.
 **Route & stop**, **Kitchen load**, **Drop-off** (Sprint 1), **Schedule & assignments** (Sprint 2, shown Oct 19) are shown right now; crew / roles / lead attendance stay hidden under their own `team` area. Nothing is deleted:
 every other feature stays in the code, shows a **Coming soon** screen ("Being designed in Sprint 1 ·
 Thu, Oct 15") or is left out of a screen, and its flows are left out of the guide panel. Add an area to
-`LIVE` in `src/data/sprints.ts` to reveal it (`team`, `profile`). Reusable pickup was added on Oct 21.
+`LIVE` in `src/data/sprints.ts` to reveal it (`team`). Login, profile & duty (Sprint 3) was added Oct 26. Reusable pickup was added on Oct 21.
 
 | Area (sprint) | Shown now | Hidden for now |
 |---|---|---|
@@ -39,8 +39,8 @@ Thu, Oct 15") or is left out of a screen, and its flows are left out of the guid
 | Schedule & assignments (2) | **Schedule** tab in the Home / Route / Stop style (mint header + "Requested · Coming up · Time off" card, Route-style request cards with work type, one-word status). Dispatch sends requests (#19); **Accept** or **Can't do it** with a reason (#18); reminder every `requestReminderHours`, warning + dispatch flag under `requestFlagHours` (48 h); pending requests show full detail incl. multi-day ("Accept all 3 days") (#20); **Coming up** by day with rough times checked against that day's open hours (#17); **Your open hours**, read-only (#16); **Time off** ≥ 7 days ahead, Requested → Approved by dispatch, warns when the day has accepted work (#76). Counts (meals) left off, per the Oct 14 review. **Dispatch view** button (desktop) opens the SFK Admin dispatch page beside the phone: *Driver pending / accepted / declined* + reason, ⚑ under-48 h flag, last/next reminder + *Send reminder now*, *Send a new request*, unassigned orders, **open hours editor** (push to the driver), time-off approve / decline (push to the driver). `DispatchPage.tsx` | — |
 | Notifications (2) | **Inbox** from the Home bell (unread count), push banners, quick replies to dispatch (presets only). Request reminders, open-hours changes and time-off answers land here and open Schedule / Time off when tapped | — |
 | Reusables (2, shown Oct 21) | **Pickup windows**: each reusables pickup shows its window with a live status (opens at / open · N min left / closes in N min / missed) on the Route row, Home card and stop screen (`windowStatus` in `src/data/route.ts`). **Pick up at the next delivery to the same address**: a pickup whose address matches a delivery still to do rides along with it ("+ Reusables pickup" on the delivery, "Also pick up here" → Count on its stop screen); if it isn't collected there it becomes its own stop again (`pickupDelivery` / `pickupsAt` in `src/store.tsx`, sample `p2` Mirendil). **Ask dispatch to skip**: reason sheet → "Skip requested"; dispatch approves (pickup drops off the route, "Skipped") or declines ("Dispatch needs this pickup today") in the Dispatch view. **Count + photo**, and anything short opens the **problem flow** pre-filled with what's missing (photo carried over). **Packing list** sheet: readable on the phone, Download (file) and Share | — |
-| Profile (3) | Ready toggle (needed to reach the route). The prototype opens already signed in; sign-in and permissions are skipped (`initial()` in `src/store.tsx`) | Me tab, Vehicle + "Use SFK Van 2", Location sharing page, Spanish |
-| Not in plan | — | History (removed from the tab bar Oct 15 2026; **to be added to the Me / profile page when Profile is designed**), offline, update prompt |
+| Login, profile & duty (3, shown Oct 26) | **Login on their own phone** (#7, Proposed): the app opens on Sign in (English / Español switch on the screen) → Route, with a Permissions pop-up over it the first time on the phone; "Use your own phone. You stay signed in on it."; Me shows "Signed in on this phone" and **Sign out** (goes off duty, stops location). **Update prompt / auto-update** (#24, Proposed): Me → Version "Up to date · updates install automatically"; optional sheet "New version ready · Update now / After this route"; a required version blocks the app ("Update to keep driving"). Prototype rows in Me show both. **Vehicle + capacity** (#64, Requested): Me → Vehicle, make / model / year / headcount set by the driver, **storage details read-only** for the driver and edited by dispatch (Dispatch view → *duty & vehicle* → Save · notify driver, which pushes to the phone). **On / off duty** (#8, Proposed): one toggle, now worded On duty / Off duty (was Ready) on Home, Me and the sheets; off duty stops location at once. **Live location while on duty** (#5, Agreed): Location sharing page, status-bar arrow, Dispatch view shows *On duty · Live* or *Off duty · No location shared*. **Spanish** (#25, Agreed): every Sprint 3 screen goes through `src/i18n.ts`. **History** is back as a Me row (opens with Back). Reset demo keeps you signed in. | — |
+| Not in plan | — | Offline. (History is now on Me; the update prompt is in Sprint 3.) |
 
 The skip buttons are prototype-only so reviewers can walk the whole route. Not built yet from Route &
 stop: "send home" after the last stop, site-to-site transfers as their own stop.
@@ -111,7 +111,7 @@ name kept: the unassigned orders a driver accepted) in `src/store.tsx`.
 ## Information architecture
 
 ```
-Sign in → Permissions
+Sign in → Route (Permissions pop-up, first time on the phone)
 └─ Tabs
    ├─ Today ── Kitchen loading checklist (whole route, or one same-day order)
    │        ├─ Stop details ── Navigate ── (arrive) ── Stop details

@@ -2,6 +2,7 @@ import { Fragment, useRef, useState, type ButtonHTMLAttributes, type ReactNode }
 import { Camera, Check, ChevronLeft, ChevronsRight, Flame, Hand, Package, Recycle, Snowflake, Truck } from "lucide-react";
 import { workOf, type StaffRole, type Stop, type StopStatus, type Work } from "../data/route";
 import sfkMark from "../assets/sfk-mark.png";
+import superfineLogo from "../assets/superfine-logo.png";
 
 export function cn(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
@@ -166,13 +167,16 @@ export function TempTag({ temp }: { temp: "HOT" | "COLD" }) {
 const WORK: Record<Work, { label: string; Icon: typeof Flame; cls: string; ink: string }> = {
   hot: { label: "Hot", Icon: Flame, cls: "bg-coral-soft text-coral-deep", ink: "text-coral" },
   cold: { label: "Cold", Icon: Snowflake, cls: "bg-info-bg text-info", ink: "text-info" },
-  reusables: { label: "Reusables pickup", Icon: Recycle, cls: "bg-teal-soft text-teal-deep", ink: "text-teal" },
+  // Oct 26 2026: a verb, so it can't be read as the order's packaging ("Reusable · Hot" = food delivered in reusables).
+  reusables: { label: "Collect reusables", Icon: Recycle, cls: "bg-teal-soft text-teal-deep", ink: "text-teal" },
 };
 /**
  * Work type at a stop (hot / cold / reusables). `pill` (default) is the filled chip for detail screens;
  * `plain` is the quiet list version: coloured icon + grey word, no background.
+ * Hot / cold describe the food being dropped off. Collecting reusables is a second job, so even in `plain` it's a
+ * small teal chip with a verb (Oct 26 2026). Reusable packaging isn't a tag at all; it's on the order details.
  */
-/** `short`: "Reusables" instead of "Reusables pickup", for narrow rows (Route tab). */
+/** `short`: "Collect" instead of "Collect reusables", for narrow rows (Route tab). */
 export function WorkTags({ stop, work, className, variant = "pill", onDark, strong, short }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean; short?: boolean }) {
   // A request (Schedule) passes its work list directly; a stop derives it.
   const list = work ?? (stop ? workOf(stop) : []);
@@ -180,13 +184,21 @@ export function WorkTags({ stop, work, className, variant = "pill", onDark, stro
   const darkInk: Record<Work, string> = { hot: "text-[#F6A985]", cold: "text-[#9FD6D8]", reusables: "text-yellow" };
   if (variant === "plain")
     return (
-      <span className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)} aria-label="Work at this stop">
+      <span className={cn("flex flex-wrap items-center gap-y-1", onDark ? "gap-x-3" : "gap-x-2", className)} aria-label="Work at this stop">
         {list.map((w) => {
           const { label, Icon, ink } = WORK[w];
+          // Oct 26 2026: hot / cold get a soft tinted background too, the same chip as Collect (light surfaces only).
+          if (!onDark)
+            return (
+              <span key={w} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", w === "hot" ? "bg-coral-soft text-coral-deep" : w === "cold" ? "bg-info-bg text-info" : "bg-teal-wash text-teal-deep")}>
+                <Icon className={cn("size-3.5", w === "reusables" ? "text-teal" : ink)} strokeWidth={w === "reusables" ? 2.4 : 2.2} />
+                {short && w === "reusables" ? "Collect" : label}
+              </span>
+            );
           return (
             <span key={w} className={cn("inline-flex items-center gap-1 text-[13px] font-medium", onDark ? "text-white/80" : strong ? "text-teal-deep" : "text-muted-foreground")}>
               <Icon className={cn("size-3.5", onDark ? darkInk[w] : ink)} strokeWidth={2.2} />
-              {short && w === "reusables" ? "Reusables" : label}
+              {short && w === "reusables" ? "Collect" : label}
             </span>
           );
         })}
@@ -210,6 +222,11 @@ export function WorkTags({ stop, work, className, variant = "pill", onDark, stro
 /** The script "S" from the Superfine Kitchen wordmark, drawn as a mask so it takes the current text colour. */
 export function SfkMark({ className }: { className?: string; strokeWidth?: number }) {
   return <span aria-hidden className={cn("block bg-current", className)} style={{ maskImage: `url(${sfkMark})`, WebkitMaskImage: `url(${sfkMark})`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "center", WebkitMaskPosition: "center" }} />;
+}
+
+/** The full Superfine Kitchen wordmark (from superfinekitchen.com), drawn in the current text colour like SfkMark. About 4:1. */
+export function SfkLogo({ className }: { className?: string }) {
+  return <span role="img" aria-label="Superfine Kitchen" className={cn("block aspect-[1030/255] bg-current", className)} style={{ maskImage: `url(${superfineLogo})`, WebkitMaskImage: `url(${superfineLogo})`, maskSize: "contain", WebkitMaskSize: "contain", maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat", maskPosition: "left center", WebkitMaskPosition: "left center" }} />;
 }
 
 /* ---------- Segmented progress bar ----------
@@ -313,7 +330,7 @@ export function Sheet({ children, onClose, title }: { children: ReactNode; onClo
       <button aria-label="Close" className="anim-fade absolute inset-0 bg-teal-deep/40" onClick={onClose} />
       <div role="dialog" aria-modal="true" className="anim-sheet relative max-h-[88%] overflow-y-auto rounded-t-3xl bg-card px-5 pb-8 pt-3 shadow-raised">
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-border-strong" />
-        {title && <h3 className="mb-4 text-xl font-bold leading-tight tracking-tight">{title}</h3>}
+        {title && <h3 className="mb-4 text-[24px] font-extrabold leading-tight tracking-tight text-teal-deep">{title}</h3>}
         {children}
       </div>
     </div>

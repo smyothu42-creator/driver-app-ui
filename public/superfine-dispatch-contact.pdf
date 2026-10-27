@@ -1,0 +1,46 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R /Annots [7 0 R] >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 449 >>
+stream
+BT /F2 22 Tf 72 720 Td (Superfine Kitchen - Dispatch) Tj ET
+BT /F1 13 Tf 72 690 Td (Trouble signing in to the driver app? Call dispatch.) Tj ET
+BT /F2 15 Tf 72 640 Td (Alana Brooks) Tj ET
+BT /F1 13 Tf 72 620 Td (Dispatch coordinator) Tj ET
+BT /F2 26 Tf 72 580 Td (\(415\) 555-0100) Tj ET
+BT /F1 12 Tf 72 540 Td (Driver accounts are created by SFK admin. Dispatch can reset your) Tj ET
+BT /F1 12 Tf 72 524 Td (password or set up your account.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Link /Rect [70 572 270 602] /Border [0 0 0] /A << /S /URI /URI (tel:+14155550100) >> >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000267 00000 n 
+0000000337 00000 n 
+0000000412 00000 n 
+0000000911 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1040
+%%EOF

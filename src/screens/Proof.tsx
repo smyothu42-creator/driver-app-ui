@@ -1,60 +1,120 @@
-import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Camera, CheckCircle2, Clock, Flashlight, FlashlightOff, Plus, Recycle, X } from "lucide-react";
-import { findStop, useApp, useT } from "../store";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Camera, Check, CheckCircle2, Package, Clock, Flashlight, FlashlightOff, Plus, Recycle, X } from "lucide-react";
+import { findStop, pickupsAt, useApp, useT, type State } from "../store";
+import type { Stop } from "../data/route";
 import { SETTINGS, fmtTime } from "../data/route";
-import { ActionBar, Button, Card, cn, SlideToConfirm, TopBar } from "../components/ui";
+import { ActionBar, Button, cn, SlideToConfirm, TopBar } from "../components/ui";
 import { isOn } from "../data/sprints";
+import { JobList, stopJobs } from "./StopDetail";
 
-export function CameraScreen({ id }: { id: string }) {
+/**
+ * Oct 27 2026: the delivery camera. At a stop with reusables it takes two separate photos in a row, with a progress
+ * bar like the stop page's: 1 Food drop-off → 2 Reusables. The step being shot is said in big type at the top, so the
+ * driver can see at a glance which photo this is. After the last one it goes to Proof of delivery.
+ * Opened with `kind` (from Proof's "Add another"), it takes just that photo and goes back.
+ */
+export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
   const { s, a } = useApp();
   const stop = findStop(s, id);
+  const st = s.stops[id];
   const [flash, setFlash] = useState(0);
   const [torch, setTorch] = useState(false);
-  const shots = s.stops[id].photos;
+  const two = needsReusablesPhoto(s, stop);
+  const [step, setStep] = useState<PhotoKind>(kind ?? (st.photos > 0 && two && !st.reusablePhotos ? "reusables" : "food"));
+  const shots = step === "food" ? st.photos : (st.reusablePhotos ?? 0);
+  const [saved, setSaved] = useState(false); // "Food photo saved" for a moment after moving on to the reusables
 
+  const toProof = () => a.jump((p) => ({ stack: [...p.stack.filter((x) => x.name !== "camera"), ...(p.stack.some((x) => x.name === "proof") ? [] : [{ name: "proof" as const, id }])] }));
   const capture = () => {
     setFlash((f) => f + 1);
-    a.addPhoto(id);
+    if (step === "food") a.addPhoto(id);
+    else a.updateStop(id, { reusablePhotos: Math.min(3, (st.reusablePhotos ?? 0) + 1) });
     window.setTimeout(() => {
-      a.jump((p) => ({ stack: [...p.stack.filter((x) => x.name !== "camera"), ...(p.stack.some((x) => x.name === "proof") ? [] : [{ name: "proof" as const, id }])] }));
+      // Food first; then, at a stop with reusables still to photograph, straight on to that photo.
+      if (!kind && step === "food" && two && !st.reusablePhotos) {
+        setStep("reusables");
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 1600);
+      } else toProof();
     }, 380);
   };
+
+  const steps = [
+    { key: "food" as const, label: "Food drop-off", Icon: Package, done: st.photos > 0 },
+    { key: "reusables" as const, label: "Reusables", Icon: Recycle, done: (st.reusablePhotos ?? 0) > 0 },
+  ];
+  const hint =
+    step === "reusables"
+      ? "Just the reusables you collected, not the food"
+      : stop.customerType === "individual"
+        ? "Show the bag and the door number"
+        : two
+          ? "Just the food, where you left it"
+          : "Show every bag and where you left it";
 
   return (
     <div className="relative h-full overflow-hidden bg-black text-white">
       {/* Full-bleed camera feed, same layout as the QR scanner. */}
       <div className="absolute inset-0">
-        <ProofFeed torch={torch} door={stop.customerType === "individual"} />
+        <ProofFeed torch={torch} scene={step === "reusables" ? "totes" : stop.customerType === "individual" ? "door" : "counter"} />
       </div>
 
-      {/* Framing corners + hint */}
-      <div className="pointer-events-none absolute inset-x-6 bottom-[160px] top-[96px]">
+      {/* Framing corners */}
+      <div className="pointer-events-none absolute inset-x-6 bottom-[160px] top-[200px]">
         {(["left-0 top-0 rounded-tl-[22px] border-b-0 border-r-0", "right-0 top-0 rounded-tr-[22px] border-b-0 border-l-0", "bottom-0 left-0 rounded-bl-[22px] border-r-0 border-t-0", "bottom-0 right-0 rounded-br-[22px] border-l-0 border-t-0"] as const).map((c) => (
           <span key={c} className={cn("absolute size-10 border-[4px] border-white/90", c)} />
         ))}
       </div>
-      <div className="pointer-events-none absolute inset-x-0 top-[108px] flex justify-center px-6">
-        <span className="rounded-full bg-black/55 px-4 py-2 text-[15px] font-semibold backdrop-blur-md">
-          {stop.customerType === "individual" ? "Show the bag and the door number" : "Show every bag and where you left it"}
-        </span>
-      </div>
       {flash > 0 && <div key={flash} className="anim-flash absolute inset-0 bg-white" />}
 
-      {/* Top bar over the camera */}
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-2">
-        <button aria-label="Close camera" onClick={a.back} className="grid size-11 place-items-center rounded-full bg-black/45 backdrop-blur-md">
-          <X className="size-5" />
-        </button>
-        <span className="max-w-[60%] truncate rounded-full bg-black/45 px-3.5 py-1.5 text-[15px] font-semibold backdrop-blur-md">{stop.name}</span>
-        <button aria-label={torch ? "Turn flashlight off" : "Turn flashlight on"} aria-pressed={torch} onClick={() => setTorch((v) => !v)} className={cn("grid size-11 place-items-center rounded-full backdrop-blur-md", torch ? "bg-white text-black" : "bg-black/45")}>
-          {torch ? <Flashlight className="size-5" /> : <FlashlightOff className="size-5" />}
-        </button>
+      {/* Top: close, stop name, torch; then which photo this is, on a solid dark panel so it reads over any scene. */}
+      <div className="absolute inset-x-0 top-0 bg-black/75 px-4 pb-4 pt-2 backdrop-blur-md">
+        <div className="flex items-center justify-between">
+          <button aria-label="Close camera" onClick={a.back} className="grid size-11 place-items-center rounded-full bg-white/15">
+            <X className="size-5" />
+          </button>
+          <span className="max-w-[60%] truncate text-[15px] font-semibold text-white/85">{stop.name}</span>
+          <button aria-label={torch ? "Turn flashlight off" : "Turn flashlight on"} aria-pressed={torch} onClick={() => setTorch((v) => !v)} className={cn("grid size-11 place-items-center rounded-full", torch ? "bg-white text-black" : "bg-white/15")}>
+            {torch ? <Flashlight className="size-5" /> : <FlashlightOff className="size-5" />}
+          </button>
+        </div>
+        {two && !kind && (
+          // Same idea as the stop page's stage track: a line with each photo on it, done ones ticked, this one bright.
+          <div className="mt-3 flex items-center gap-2 px-1" aria-label="Photos at this stop">
+            {steps.map((x, i) => (
+              <Fragment key={x.key}>
+                {i > 0 && <span className={cn("h-0.5 flex-1 rounded-full", steps[0].done ? "bg-[#7fd1cc]" : "bg-white/25")} />}
+                <span className={cn("flex items-center gap-1.5 text-[13px] font-semibold", x.key === step ? "text-white" : x.done ? "text-[#7fd1cc]" : "text-white/50")}>
+                  <span className={cn("grid size-6 place-items-center rounded-full", x.key === step ? "bg-white text-black" : x.done ? "bg-[#7fd1cc] text-black" : "bg-white/20")}>
+                    {x.done && x.key !== step ? <Check className="size-3.5" strokeWidth={3} /> : <x.Icon className="size-3.5" />}
+                  </span>
+                  {x.label}
+                </span>
+              </Fragment>
+            ))}
+          </div>
+        )}
+        <div className="mt-3 px-1">
+          <div className="text-[22px] font-bold leading-tight">
+            {two && !kind ? `Photo ${step === "food" ? 1 : 2} of 2 · ` : ""}
+            {step === "food" ? "Food drop-off" : "Reusables"}
+          </div>
+          <div className="mt-0.5 text-[15px] text-white/80">{hint}</div>
+        </div>
       </div>
+
+      {saved && (
+        <div className="anim-fade absolute inset-x-0 top-[216px] flex justify-center">
+          <span className="flex items-center gap-1.5 rounded-full bg-success px-4 py-2 text-[15px] font-semibold">
+            <CheckCircle2 className="size-4" /> Food photo saved
+          </span>
+        </div>
+      )}
 
       {/* Shutter bar */}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-8 pb-10 pt-10">
         <span className="w-16 text-[13px] font-semibold text-white/85">{shots > 0 ? `${shots}/3` : "Up to 3"}</span>
-        <button aria-label="Take photo" onClick={capture} className="grid size-[76px] place-items-center rounded-full border-4 border-white">
+        <button aria-label={`Take ${step === "food" ? "food drop-off" : "reusables"} photo`} onClick={capture} className="grid size-[76px] place-items-center rounded-full border-4 border-white">
           <span className="size-[60px] rounded-full bg-white transition active:scale-90" />
         </button>
         <span className="w-16" />
@@ -67,7 +127,7 @@ export function CameraScreen({ id }: { id: string }) {
  * A taken photo: the same scene as the camera (ProofFeed), drawn at phone size and scaled down to the thumbnail.
  * Each shot is framed a little differently, like real handheld photos.
  */
-export function PhotoThumb({ door, shot }: { door: boolean; shot: number }) {
+export function PhotoThumb({ door, shot, scene }: { door: boolean; shot: number; scene?: Scene }) {
   const box = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.3);
   useEffect(() => {
@@ -81,7 +141,7 @@ export function PhotoThumb({ door, shot }: { door: boolean; shot: number }) {
   return (
     <div ref={box} className="absolute inset-0 overflow-hidden">
       <div className="absolute left-0 top-0 h-[760px] w-[360px] origin-top-left" style={{ transform: `scale(${scale}) translate(${frame.x}px, ${frame.y}px) rotate(${frame.r}deg)` }}>
-        <ProofFeed torch={false} door={door} />
+        <ProofFeed torch={false} scene={scene ?? (door ? "door" : "counter")} />
       </div>
     </div>
   );
@@ -92,7 +152,9 @@ export function PhotoThumb({ door, shot }: { door: boolean; shot: number }) {
  * front, and the order on it (kraft bags with SFK labels and an insulated hot carrier) with contact shadows.
  * Individual orders show a bag at an apartment door instead.
  */
-function ProofFeed({ torch, door }: { torch: boolean; door: boolean }) {
+type Scene = "door" | "counter" | "totes";
+function ProofFeed({ torch, scene }: { torch: boolean; scene: Scene }) {
+  const door = scene === "door";
   const kraft = "repeating-linear-gradient(90deg, rgba(90,55,20,0.05) 0 1px, transparent 1px 5px)";
   const Bag = ({ className, tall }: { className: string; tall?: boolean }) => (
     <div className={cn("absolute", className)}>
@@ -133,6 +195,20 @@ function ProofFeed({ torch, door }: { torch: boolean; door: boolean }) {
           {/* stone counter */}
           <div className="absolute inset-x-0 bottom-0 top-[378px]" style={{ background: "radial-gradient(ellipse at 40% 20%, rgba(255,255,255,0.35), transparent 60%), linear-gradient(180deg, #c9c4bb 0%, #b6b0a5 40%, #8e877c 100%)" }} />
           <div className="absolute inset-x-0 top-[374px] h-[6px] bg-[#e6e2da] shadow-[0_2px_4px_rgba(0,0,0,0.2)]" />
+          {scene === "totes" ? (
+            // Oct 27 2026: the reusables photo: empty totes stacked on the counter, lids beside them.
+            <>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="absolute left-[40px] h-[46px] w-[170px] rounded-[6px] shadow-[0_10px_16px_-6px_rgba(0,0,0,0.5)]" style={{ top: 330 - i * 40, background: "linear-gradient(180deg, #2a7b80 0%, #17585c 100%)" }}>
+                  <div className="absolute inset-x-2 top-1.5 h-1 rounded-full bg-white/20" />
+                  <div className="absolute bottom-2 left-3 rounded-[2px] bg-white px-1.5 text-[7px] font-bold text-[#004045]">SFK</div>
+                </div>
+              ))}
+              <div className="absolute right-[24px] top-[340px] h-[34px] w-[110px] rounded-[5px] bg-[#1f6a6e] shadow-[0_10px_16px_-6px_rgba(0,0,0,0.5)]" />
+              <div className="absolute right-[30px] top-[326px] h-[16px] w-[100px] rounded-[4px] bg-[#2a7b80]" />
+            </>
+          ) : (
+          <>
           {/* the order on the counter */}
           <Bag className="left-[22px] top-[262px]" tall />
           <Bag className="left-[124px] top-[284px]" />
@@ -142,6 +218,8 @@ function ProofFeed({ torch, door }: { torch: boolean; door: boolean }) {
             <div className="absolute inset-x-3 top-3 h-px bg-white/15" />
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-[3px] bg-white px-2 py-1 text-[8px] font-bold leading-tight text-[#004045]">SFK · HOT</div>
           </div>
+          </>
+          )}
         </>
       )}
       {/* lens vignette */}
@@ -155,18 +233,31 @@ export function ProofScreen({ id }: { id: string }) {
   const t = useT();
   const stop = findStop(s, id);
   const st = s.stops[id];
-  const handoff = st.handoff ?? (stop.customerType === "family" ? "handed" : "left");
+  const handoff = st.handoff ?? "handed"; // Oct 27 2026: "Handed to someone" is the default for every order
   // Delivery time is "now" plus the minute or two it takes to finish this screen (matches completeDelivery).
   const at = s.clock + 8;
   const lateBy = at - stop.windowEnd;
   const needsName = handoff === "handed" && !st.receivedBy?.trim();
   const needsNote = lateBy > 0 && st.delayReason === "Other" && !st.delayNote?.trim();
+  // Oct 26 2026: reusables to collect at this address (with this delivery, or a pickup riding along) come before
+  // completing: the bottom button says "Collect reusables" until each one is marked collected or not collected.
+  const toCollect = isOn("reusables")
+    ? [...(stop.reusables && !st.collectResult ? [stop.id] : []), ...pickupsAt(s, stop).filter((x) => s.stops[x.id].status !== "delivered").map((x) => x.id)]
+    : [];
+  const two = needsReusablesPhoto(s, stop);
+  const needsReusables = two && !st.reusablePhotos;
 
   return (
     <div className="flex h-full flex-col">
       <TopBar title="Proof of delivery" onBack={() => a.jump((p) => ({ stack: p.stack.filter((x) => x.name !== "proof") }))} />
       <div className="flex flex-1 flex-col space-y-5 overflow-y-auto overflow-x-hidden px-4 pt-4">
-        {/* #4 marked on time or delayed. Delayed asks why, with presets. First thing on the screen. */}
+        {/* Oct 26 2026: the same stage track as the stop page, so the driver sees where they are (and that Collect is next). */}
+        <JobList id={stop.id} jobs={stopJobs(s, stop)} there />
+        {/* Up to 3 photos each, all equal (no "main"); the X removes one. Oct 26 2026: above the on time / delayed box.
+            Oct 27 2026: at a stop with reusables, the food and the reusables photos are separate, each labelled. */}
+        <PhotoGroup id={id} kind="food" label={two ? "1 · Food drop-off" : undefined} />
+        {two && <PhotoGroup id={id} kind="reusables" label="2 · Reusables" />}
+        {/* #4 marked on time or delayed. Delayed asks why, with presets. */}
         <section>
           {lateBy <= 0 ? (
             <div className="flex items-center gap-2 rounded-xl bg-success-bg px-3 py-2.5 text-[15px] font-semibold text-success">
@@ -204,77 +295,20 @@ export function ProofScreen({ id }: { id: string }) {
           )}
         </section>
 
+
+
+        {/* Oct 26 2026: handoff, reusables card and customer note removed (asked elsewhere: Check drop-off, Collect). */}
+        {/* Oct 26 2026: an optional note for dispatch (only dispatch sees it). */}
         <section>
-          {/* Up to 3 photos, all equal (no "main"); the X removes one. */}
-          <div className="grid grid-cols-3 gap-2">
-            {Array.from({ length: st.photos }).map((_, i) => (
-              <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border">
-                <PhotoThumb door={stop.customerType === "individual"} shot={i} />
-                <button onClick={() => a.removeOnePhoto(id)} aria-label={`Remove photo ${i + 1}`} className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-black/60 text-white">
-                  <X className="size-4" />
-                </button>
-              </div>
-            ))}
-            {st.photos < 3 && (
-              <button
-                onClick={() => a.push({ name: "camera", id })}
-                className="flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-control text-2xs font-semibold text-teal"
-              >
-                {st.photos === 0 ? <Camera className="size-6" /> : <Plus className="size-6" />}
-                {st.photos === 0 ? "Take photo" : "Add another"}
-              </button>
-            )}
-          </div>
+          <label className="text-overline mb-1.5 block px-1">Note for dispatch (optional)</label>
+          <textarea
+            value={st.dispatchNote ?? ""}
+            onChange={(e) => a.updateStop(id, { dispatchNote: e.target.value })}
+            rows={3}
+            placeholder="e.g. Front desk asked for a later drop next week"
+            className="w-full resize-none rounded-xl border border-border-strong bg-white px-4 py-3 text-base outline-none focus:border-teal focus:ring-2 focus:ring-teal/30"
+          />
         </section>
-
-
-        {/* Full-width white panel from the handoff down to the bottom, rounded at the top (side borders sit just off-screen). */}
-        <div className="-mx-[17px] flex-1 space-y-5 rounded-t-[28px] border border-b-0 border-border-strong bg-[#F9F9F7] px-[17px] pb-6 pt-5">
-        <section>
-          <div role="radiogroup" className="grid grid-cols-2 gap-1 rounded-full border border-border-strong bg-white p-1">
-            {(["left", "handed"] as const).map((v) => (
-              <button
-                key={v}
-                role="radio"
-                aria-checked={handoff === v}
-                onClick={() => a.updateStop(id, { handoff: v })}
-                className={cn("h-11 rounded-full text-[15px] font-semibold transition-colors", handoff === v ? "bg-teal-deep text-white" : "text-foreground/70")}
-              >
-                {v === "handed" ? "Handed to someone" : "Left at drop-off"}
-              </button>
-            ))}
-          </div>
-          {handoff === "handed" && (
-            <div className="mt-3">
-              <label className="text-overline mb-1.5 block">{t("Who received it?")}</label>
-              <input
-                value={st.receivedBy ?? ""}
-                onChange={(e) => a.updateStop(id, { receivedBy: e.target.value })}
-                placeholder="Name"
-                className="h-12 w-full rounded-xl border border-border-strong bg-white px-4 text-base outline-none focus:border-teal focus:bg-card focus:ring-2 focus:ring-teal/30"
-              />
-              <div className="mt-2 grid auto-cols-fr grid-flow-col gap-2">
-                {[stop.contact.name, ...(stop.backupContact ? [stop.backupContact.name] : []), "Security"].map((n) => (
-                  <button key={n} onClick={() => a.updateStop(id, { receivedBy: n })} className={cn("h-11 min-w-0 truncate rounded-full border px-2 text-[13px] font-semibold", st.receivedBy === n ? "border-teal bg-teal-wash text-teal-deep" : "border-border-strong bg-white")}>
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* #50 / #53: totes collected with this delivery are counted, not ticked. Hidden for now (Reusable pickup sprint). */}
-        {isOn("reusables") && stop.reusables && (
-          <Card onClick={() => a.push({ name: "collect", id })} className="flex items-center gap-3 p-4">
-            <Recycle className="size-5 shrink-0 text-teal" />
-            <span className="min-w-0 flex-1 text-[13px]">
-              {st.collected ? `${stop.reusables.reduce((n, x) => n + (st.collected![x.id] ?? 0), 0)} of ${stop.reusables.reduce((n, x) => n + x.expected, 0)} reusables collected` : "Count the reusables you're collecting"}
-            </span>
-            <span className="text-[15px] font-semibold text-teal">{st.collected ? "Edit" : "Count"}</span>
-          </Card>
-        )}
-
         {/* #13 / #75: location is logged with "Delivered". Too far from the address warns here and flags dispatch. */}
         {s.awayFromAddress ? (
           <div className="flex gap-3 rounded-xl border-2 border-warning-border bg-warning-bg p-3 text-warning">
@@ -286,23 +320,12 @@ export function ProofScreen({ id }: { id: string }) {
           </div>
         ) : null /* "At the address · location logged" note hidden for now; the location is still logged (#75). */}
 
-        <section>
-          <label className="text-overline mb-1.5 block px-1">Note for the customer (optional)</label>
-          <textarea
-            value={st.notes ?? ""}
-            onChange={(e) => a.updateStop(id, { notes: e.target.value })}
-            rows={3}
-            placeholder="e.g. Left on the pantry counter, hot bags on the left"
-            className="w-full rounded-xl border border-border-strong bg-white px-4 py-3 text-base outline-none focus:border-teal focus:bg-card focus:ring-2 focus:ring-teal/30"
-          />
-        </section>
-        </div>
       </div>
 
       <ActionBar>
         {st.photos === 0 ? (
           <Button size="lg" className="w-full" onClick={() => a.push({ name: "camera", id })}>
-            <Camera /> {t("Take a photo to finish")}
+            <Camera /> {two ? t("Take the food photo") : t("Take a photo to finish")}
           </Button>
         ) : needsNote ? (
           // #4: "Other" delay reason needs a few words before the slide unlocks.
@@ -310,9 +333,17 @@ export function ProofScreen({ id }: { id: string }) {
             Say what held you up
           </Button>
         ) : needsName ? (
-          // #12: "Delivered" is logged with who received it, so the slide waits for a name.
-          <Button size="lg" variant="outline" className="w-full" disabled>
+          // #12: "Delivered" is logged with who received it, so the slide waits for a name (asked in Check drop-off).
+          <Button size="lg" variant="outline" className="w-full" onClick={() => a.openSheet({ name: "dropCheck", id })}>
             Add who received it
+          </Button>
+        ) : toCollect.length > 0 ? (
+          <Button size="lg" className="w-full" onClick={() => a.push({ name: "collect", id: toCollect[0] })}>
+            <Recycle /> {t("Collect reusables")}
+          </Button>
+        ) : needsReusables ? (
+          <Button size="lg" className="w-full" onClick={() => a.push({ name: "camera", id, kind: "reusables" })}>
+            <Recycle /> {t("Take the reusables photo")}
           </Button>
         ) : (
           <>
@@ -320,6 +351,8 @@ export function ProofScreen({ id }: { id: string }) {
               label={s.awayFromAddress ? t("Slide to complete anyway") : t("Slide to complete delivery")}
               onConfirm={() => {
                 if (!st.handoff) a.updateStop(id, { handoff });
+                // The reusables photos go with each order collected here (History shows them with the pickup).
+                if (st.reusablePhotos) for (const x of reusableIds(s, stop)) if (s.stops[x].collectResult === "collected") a.updateStop(x, { collectPhotos: st.reusablePhotos });
                 a.completeDelivery(id);
               }}
             />
@@ -327,5 +360,96 @@ export function ProofScreen({ id }: { id: string }) {
         )}
       </ActionBar>
     </div>
+  );
+}
+
+/**
+ * Left at drop-off / Handed to someone, and who received it. Oct 26 2026: also asked in Check drop-off (where the
+ * driver puts the order down); both read and write the same answer on the stop.
+ */
+export function HandoffPicker({ id }: { id: string }) {
+  const { s, a } = useApp();
+  const t = useT();
+  const st = s.stops[id];
+  const handoff = st.handoff ?? "handed"; // Oct 27 2026: "Handed to someone" is the default for every order
+  return (
+    <section>
+      <div role="radiogroup" className="grid grid-cols-2 gap-1 rounded-full border border-border-strong bg-white p-1">
+        {(["handed", "left"] as const).map((v) => (
+          <button
+            key={v}
+            role="radio"
+            aria-checked={handoff === v}
+            onClick={() => a.updateStop(id, { handoff: v })}
+            className={cn("h-11 rounded-full text-[15px] font-semibold transition-colors", handoff === v ? "bg-teal-deep text-white" : "text-foreground/70")}
+          >
+            {v === "handed" ? "Handed to someone" : "Left at drop-off"}
+          </button>
+        ))}
+      </div>
+      {handoff === "handed" && (
+        <div className="mt-3">
+          <label className="text-overline mb-1.5 block">{t("Who received it?")}</label>
+          <input
+            value={st.receivedBy ?? ""}
+            onChange={(e) => a.updateStop(id, { receivedBy: e.target.value })}
+            placeholder="Name"
+            className="h-12 w-full rounded-xl border border-border-strong bg-white px-4 text-base outline-none focus:border-teal focus:bg-card focus:ring-2 focus:ring-teal/30"
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+export type PhotoKind = "food" | "reusables";
+
+/** Orders whose reusables are collected at this delivery: its own, and pickups riding along. */
+const reusableIds = (s: State, stop: Stop) => (isOn("reusables") && stop.kind !== "pickup" ? [...(stop.reusables?.length ? [stop.id] : []), ...pickupsAt(s, stop).map((x) => x.id)] : []);
+
+/**
+ * Oct 27 2026: reusables are picked up at this delivery and not all marked "not collected", so the stop needs a
+ * second, separate photo of them after the food photo.
+ */
+export function needsReusablesPhoto(s: State, stop: Stop) {
+  const ids = reusableIds(s, stop);
+  return ids.length > 0 && ids.some((x) => s.stops[x].collectResult !== "not_collected");
+}
+
+/** One kind of photo on Proof of delivery: its label, the thumbnails (X removes one) and Add another. */
+function PhotoGroup({ id, kind, label }: { id: string; kind: PhotoKind; label?: string }) {
+  const { s, a } = useApp();
+  const stop = findStop(s, id);
+  const st = s.stops[id];
+  const n = kind === "food" ? st.photos : (st.reusablePhotos ?? 0);
+  const remove = () => (kind === "food" ? a.removeOnePhoto(id) : a.updateStop(id, { reusablePhotos: Math.max(0, n - 1) }));
+  return (
+    <section>
+      {label && (
+        <div className="mb-2 flex items-center gap-1.5 px-1 text-[15px] font-bold">
+          {kind === "food" ? <Package className="size-4 text-teal" /> : <Recycle className="size-4 text-teal" />} {label}
+          {n > 0 && <CheckCircle2 className="ml-auto size-5 text-success" aria-label="Taken" />}
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: n }).map((_, i) => (
+          <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-xl border border-border">
+            <PhotoThumb door={stop.customerType === "individual"} scene={kind === "reusables" ? "totes" : undefined} shot={i} />
+            <button onClick={remove} aria-label={`Remove photo ${i + 1}`} className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-black/60 text-white">
+              <X className="size-4" />
+            </button>
+          </div>
+        ))}
+        {n < 3 && (
+          <button
+            onClick={() => a.push({ name: "camera", id, kind })}
+            className="flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-control text-2xs font-semibold text-teal"
+          >
+            {n === 0 ? <Camera className="size-6" /> : <Plus className="size-6" />}
+            {n === 0 ? "Take photo" : "Add another"}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }

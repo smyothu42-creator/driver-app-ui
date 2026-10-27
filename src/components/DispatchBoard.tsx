@@ -487,6 +487,10 @@ export function DriverRequests() {
             <button onClick={a.sendRequest} className="h-8 rounded-full bg-teal px-3 text-[13px] font-semibold text-white">
               New request
             </button>
+            {/* Oct 26 2026: put the driver on a delivery with no accept step; they get a push. */}
+            <button onClick={a.assignDelivery} className="h-8 rounded-full border border-teal px-3 text-[13px] font-semibold text-teal-deep">
+              Assign
+            </button>
           </span>
         }
       />
@@ -494,7 +498,7 @@ export function DriverRequests() {
         {list.map((r) => {
           // #18: not answered and under 48 h → flagged; one red chip instead of two.
           const flag = r.status === "pending" && hoursUntil(r, s.clock) <= SETTINGS.requestFlagHours;
-          const b = flag ? { tone: "danger" as const, label: "⚑ Pending · 48 h" } : r.placeholder && r.status === "accepted" ? { tone: "warning" as const, label: "Usual route" } : REQ_BADGE[r.status];
+          const b = flag ? { tone: "danger" as const, label: "⚑ Pending · 48 h" } : r.placeholder && r.status === "accepted" ? { tone: "warning" as const, label: "Usual route" } : r.assigned && r.status === "accepted" ? { tone: "info" as const, label: r.unseen ? "Assigned · not seen" : "Assigned · seen" } : REQ_BADGE[r.status];
           return (
             <div key={r.id} className="px-4 py-3">
               <div className="flex items-center gap-2">
@@ -580,6 +584,49 @@ export function OpenHoursEditor() {
       </div>
       <button onClick={() => a.setOpenHours(draft)} disabled={!dirty} className="mt-2 h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40">
         {dirty ? "Save" : "Saved"}
+      </button>
+    </section>
+  );
+}
+
+/* ---------------- #5 / #8 duty + live location, #64 vehicle (storage details: dispatch edits) ---------------- */
+export function DriverProfile() {
+  const { s, a } = useApp();
+  const [draft, setDraft] = useState(s.storage);
+  // Picks up a demo reset while this panel is open.
+  useEffect(() => setDraft(s.storage), [s.storage]);
+  const dirty = draft.trim() !== s.storage && draft.trim().length > 0;
+  const status = !s.signedIn ? "Signed out" : s.shiftOn ? "On duty" : "Off duty";
+  return (
+    <section>
+      <SectionHead title={`${DRIVER.first} · duty & vehicle`} />
+      <div className="divide-y divide-border rounded-2xl border border-border">
+        <div className="flex items-center gap-3 px-4 py-3 text-sm">
+          <span className={cn("size-2.5 shrink-0 rounded-full", s.shiftOn ? "bg-success" : "bg-control")} aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">{status}</span>
+            <span className="block text-[13px] text-muted-foreground">
+              {s.shiftOn ? `Live location on the map · since ${fmtTime(s.shiftStartedAt!)} · every 15 s` : "No location shared"}
+            </span>
+          </span>
+          <Badge tone={s.shiftOn ? "success" : "neutral"}>{s.shiftOn ? "Live" : "Off"}</Badge>
+        </div>
+        <div className="px-4 py-3 text-sm">
+          <span className="block font-semibold">
+            {s.vehicle.year} {s.vehicle.make} {s.vehicle.model}
+          </span>
+          <span className="block text-[13px] text-muted-foreground">
+            Set by the driver · headcount {s.vehicle.headcount ? `${s.vehicle.headcount} besides the driver` : "not set"}
+          </span>
+        </div>
+        <label className="block px-4 py-3 text-sm">
+          <span className="block font-semibold">Storage details</span>
+          <span className="block text-[13px] text-muted-foreground">Only dispatch edits this. The driver reads it in Me → Vehicle.</span>
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-control bg-card p-3 text-[13px] leading-snug outline-none focus:border-teal" />
+        </label>
+      </div>
+      <button onClick={() => a.setStorage(draft.trim())} disabled={!dirty} className="mt-2 h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40">
+        {dirty ? "Save · notify driver" : "Saved"}
       </button>
     </section>
   );

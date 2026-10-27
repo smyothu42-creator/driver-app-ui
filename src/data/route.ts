@@ -71,6 +71,8 @@ export interface Stop {
   bags: Bag[];
   buildingNotes: string; // Address.instructions (saved once, reused every order)
   hasBuildingPhoto: boolean; // Address.instructionsFileUrl
+  /** Oct 27 2026: the PDF SFK already keeps for this address/order, opened from "More details" rather than copied inline. */
+  detailsPdf?: string;
   dropoffNotes: string; // Order.deliveryInstructions (this order only)
   setup?: string[]; // setup checklist on arrival (#11)
   /** Where the setup checklist comes from: a company default or this delivery address (#11, #29). */
@@ -81,7 +83,9 @@ export interface Stop {
   parking?: string;
   backupContact?: Contact; // #2
   returns?: string; // reusable packaging to collect
-  reusables?: Reusable[]; // expected counts for a pickup, or collected along with a delivery (#50, #53)
+  reusables?: Reusable[]; // what went out with the order, from its reusables packing slip (#50, #53)
+  /** Oct 26 2026: the order the reusables went out with. The collect screen shows it instead of asking for counts. */
+  fromOrder?: { orderNo: string; date: string; type: string };
   contact: Contact;
   /** Unassigned orders only: why dispatch opened it for claiming (shown to drivers). */
   openReason?: string;
@@ -101,6 +105,10 @@ export const DRIVER = {
 };
 
 export const DISPATCH: Contact = { name: "Alana Brooks", role: "Dispatch coordinator", phone: "(415) 555-0100" };
+/** Oct 26 2026: sign-in's "Call dispatch" opens this one-pager with dispatch's number (the driver isn't signed in yet). */
+/** Oct 27 2026: sample delivery details PDFs, one per address (SFK supplies the real files). */
+const detailsPdf = (name: string) => `${import.meta.env.BASE_URL}delivery-details-${name}.pdf`;
+export const DISPATCH_CONTACT_URL = `${import.meta.env.BASE_URL}superfine-dispatch-contact.pdf`;
 /** SFK people a driver can call from a stop ("SFK Team" sheet). Dispatch first. */
 export const SFK_TEAM: (Contact & { tag: string })[] = [
   { ...DISPATCH, tag: "Dispatch" },
@@ -114,7 +122,8 @@ export const KITCHEN = {
   addressLine1: "1661 Tennessee St",
   city: "San Francisco, CA 94107",
   readyAt: 11 * 60 + 12, // Order.dispatchReadyAt from the kitchen screen (first pickup)
-  dock: "Dispatch dock · Bay 2",
+  // Oct 26 2026: no dock. Drivers park and walk up; Superfine's static PDF says how to reach the suite.
+  instructionsUrl: `${import.meta.env.BASE_URL}superfine-driver-instructions.pdf`,
   at: PLACES.k,
 };
 
@@ -208,9 +217,11 @@ export const STOPS: Stop[] = [
     buildingNotes:
       "Check in at lobby security with your SFK badge. Use freight elevator B (left of the loading dock on Natoma St).",
     hasBuildingPhoto: true,
+    detailsPdf: detailsPdf("neptune"),
     dropoffNotes: "Place meals on the long pantry counter, sorted by name label.",
     returns: "Collect yesterday's empty totes (by the pantry door).",
     reusables: [{ id: "s1-tote", label: "Empty reusable totes", expected: 3 }],
+    fromOrder: { orderNo: "ORD-3089", date: "Mon, Oct 5", type: "Daily Lunch" },
     setup: ["Lay meals on the pantry counter by name label", "Take the lids off the hot trays"],
     setupSource: "company",
     parking: "Loading dock on Natoma St, 20 min max",
@@ -247,6 +258,7 @@ export const STOPS: Stop[] = [
     ],
     buildingNotes: "Street parking is tight. 15-min loading zone in front of the building on King St.",
     hasBuildingPhoto: false,
+    detailsPdf: detailsPdf("mirendil"),
     dropoffNotes: "Team lunch for 20. Please set up in conference room 4B before 12:15. Ask front desk for Jordan.",
     setup: ["Set platters on the side table", "Lay out salads, dressings and desserts", "Put out plates, napkins and utensils"],
     setupSource: "address",
@@ -312,6 +324,7 @@ export const STOPS: Stop[] = [
       { id: "p1-tray", label: "Hot trays (full pans)", expected: 4 },
       { id: "p1-lid", label: "Tray lids", expected: 4 },
     ],
+    fromOrder: { orderNo: "ORD-3061", date: "Thu, Oct 1", type: "Family Style" },
     parking: "Loading dock on Sutter St",
     contact: { name: "Nadia Flores", role: "Office manager · Brightline Health", phone: "(415) 555-0155" },
     at: PLACES.p1,
@@ -343,6 +356,7 @@ export const STOPS: Stop[] = [
       { id: "p2-platter", label: "Serving platters", expected: 3 },
       { id: "p2-chafer", label: "Chafing dish sets", expected: 2 },
     ],
+    fromOrder: { orderNo: "ORD-3072", date: "Fri, Oct 2", type: "Family Style" },
     parking: "15-min loading zone in front, on King St",
     contact: { name: "Casey Moore", role: "Office manager · Mirendil Inc", phone: "(415) 555-0171" },
     at: PLACES.s2,
@@ -586,6 +600,10 @@ export interface DeliveryRequest {
   remindedAt?: number;
   role?: StaffRole;
   placeholder?: boolean;
+  /** Oct 26 2026: dispatch put the driver on it directly. Nothing to accept; it arrives accepted and the driver is told. */
+  assigned?: boolean;
+  /** An assignment the driver hasn't opened yet: "New" on the row and counted on the Schedule tab. */
+  unseen?: boolean;
   status: RequestStatus;
   sentAt: string;
   reason?: string;
@@ -614,6 +632,8 @@ export const REQUESTS: DeliveryRequest[] = [
   { id: "r18", orderNo: "ORD-3190", name: "Neptune Corp", address: "550 Howard St", dateISO: "2026-10-19", dateLabel: "Mon, Oct 19", time: 11 * 60 + 30, meals: 22, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 8:30 AM" },
   { id: "r19", orderNo: "ORD-3192", name: "Halcyon Labs", address: "1 Market St", dateISO: "2026-10-20", dateLabel: "Tue, Oct 20", time: 12 * 60 + 30, meals: 14, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:30 AM" },
   { id: "r20", orderNo: "ORD-3195", name: "Presidio Sports Club", address: "1 Letterman Dr", dateISO: "2026-10-21", dateLabel: "Wed, Oct 21", time: 13 * 60, meals: 45, type: "Family Style", customerType: "family", work: ["hot", "cold"], status: "accepted", sentAt: "Today 8:30 AM" },
+  // Oct 26 2026: dispatch assigned this one; the driver didn't accept it, so it's flagged New until opened.
+  { id: "r24", orderNo: "ORD-3201", name: "Bayview Health Center", address: "1601 Evans Ave", dateISO: "2026-10-09", dateLabel: "Fri, Oct 9", time: 12 * 60 + 30, meals: 20, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", assigned: true, unseen: true, sentAt: "Today 10:05 AM" },
   // A busy day (Thu, Oct 15: five deliveries) so the time-off sheet shows "+2 more".
   { id: "r21", orderNo: "ORD-3197", name: "Cobalt Robotics", address: "185 Berry St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 11 * 60, meals: 18, type: "Daily Lunch", customerType: "corporate", work: ["cold"], status: "accepted", sentAt: "Today 8:40 AM" },
   { id: "r22", orderNo: "ORD-3198", name: "Harbor Analytics", address: "100 Pine St", dateISO: "2026-10-15", dateLabel: "Thu, Oct 15", time: 12 * 60 + 45, meals: 26, type: "Daily Lunch", customerType: "corporate", work: ["hot"], status: "accepted", sentAt: "Today 8:40 AM" },
