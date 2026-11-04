@@ -74,11 +74,12 @@ export function StopDetail({ id }: { id: string }) {
             <div className="pb-5">
               <div className="h-3" />
               <h1 className="text-2xl font-bold leading-tight tracking-tight">{stop.name}</h1>
-              <p className="nums mt-1 flex items-center gap-1.5 text-[17px] font-semibold text-teal-deep">
-                <Clock className="size-4" />
+              <p className="nums mt-1 flex items-center gap-1.5 whitespace-nowrap text-[17px] font-semibold text-teal-deep">
+                <Clock className="size-4 shrink-0" />
                 {fmtWindow(stop.windowStart, stop.windowEnd)}
-                {stop.guestReadyTime && <span className="font-normal text-muted-foreground">· set up by {fmtTime(stop.guestReadyTime)}</span>}
               </p>
+              {/* Nov 4 2026: the setup deadline on its own line (it used to squeeze in beside the window and wrap). */}
+              {stop.guestReadyTime && <p className="nums mt-0.5 pl-[22px] text-[15px] text-muted-foreground">Set up by {fmtTime(stop.guestReadyTime)}</p>}
               <p className="mt-1.5 text-[15px] leading-snug text-muted-foreground">
                 {stop.addressLine1}
                 {stop.addressLine2 && ` · ${stop.addressLine2}`}
