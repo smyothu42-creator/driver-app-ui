@@ -167,7 +167,7 @@ function Flows({ onClose }: { onClose: () => void }) {
             Act("Install the app from the link SFK sends"),
             Scr("Sign in", () => a.jump(() => ({ signedIn: false, stack: [{ name: "signin" }], sheet: null }))),
             Dec("First time on this phone?", [
-              ["Yes", [Scr("Permissions pop-up over Route: location, camera, notifications", () => a.jump(() => ({ signedIn: true, tab: "map", stack: [{ name: "tabs" }], sheet: { name: "permissions" } }))), Act("Allow each")]],
+              ["Yes", [Scr("iPhone system alerts over Route: location (then Always), notifications, camera", () => a.jump(() => ({ signedIn: true, tab: "map", stack: [{ name: "tabs" }], sheet: { name: "permissions" } }))), Act("Allow each")]],
               ["No", [Sys("Permissions already set")]],
             ]),
             Scr("Home · Ready is off", offDuty),

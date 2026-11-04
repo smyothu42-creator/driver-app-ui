@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { Check, CheckCheck, ChevronDown, Flame, Info, Lock, Minus, PackageCheck, ScanLine, Snowflake, Truck } from "lucide-react";
-import { findStop, runStops, useApp, useT, vehicleOf, type State } from "../store";
-import { KITCHEN, KITCHEN_READY, VEHICLES, fmtTime, fmtWindow, runOf, tempsOf, workOf, type Bag, type Stop } from "../data/route";
+import { Check, CheckCheck, ChevronDown, Flame, Info, Lock, Minus, ScanLine, Snowflake } from "lucide-react";
+import { findStop, runStops, useApp, useT, type State } from "../store";
+import { KITCHEN, KITCHEN_READY, fmtTime, runOf, tempsOf, type Bag, type Stop } from "../data/route";
 import { ActionBar, Button, Card, cn, Sheet, SlideToConfirm, StopAvatar, TopBar } from "../components/ui";
 import { kitchenStages } from "./Today";
 import { StageTrack } from "./StopDetail";
@@ -170,10 +170,13 @@ export function PackageScreen({ id }: { id: string }) {
           ) : undefined
         }
       />
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {/* Oct 26 2026: the kitchen screen's progress bar (On duty → Scan slips → Load → Start route), not a per-order bar. */}
-        {/* On an order, "Scan slips" is this order's slip, so once it's scanned the driver is on Load. */}
+      {/* Oct 26 2026: the kitchen screen's progress bar (On duty → Scan slips → Load → Start route), not a per-order bar.
+          On an order, "Scan slips" is this order's slip, so once it's scanned the driver is on Load.
+          Nov 4 2026: it stays put above the scroll, like the stop page's. */}
+      <div className="relative z-10 shrink-0 border-b border-border/60 bg-white px-5 pb-4 pt-2">
         <StageTrack stages={kitchenStages(s, t).map((x) => (x.key === "scan" ? { ...x, done: !!s.scanned[id] } : x))} />
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {/* Same teal stroke and soft shadow as Home's kitchen card. */}
         <Card className="overflow-hidden !border-teal/25 !shadow-[0_1px_6px_rgba(0,64,69,0.05)]">
           {/* The order at a glance: hot / cold for the whole order (from its packaging), then what kind of order it is. */}
@@ -186,24 +189,25 @@ export function PackageScreen({ id }: { id: string }) {
               </span>
             </span>
           </div>
-          <div className="border-t border-border px-4 py-3">
-            <div className="flex items-baseline justify-between gap-3">
+          {/* Nov 4 2026 (review: "a little bit more clean"): one quiet progress line, a thin bar, and the hint as plain grey
+              text (no second icon, no bold teal), so the count is the only thing that stands out. */}
+          <div className="border-t border-border px-4 pb-4 pt-3.5">
+            <div className="flex items-center justify-between gap-3">
               <span className="nums text-[15px] font-semibold">
-                {done} <span className="text-muted-foreground">of {total} loaded</span>
+                {done} of {total} loaded
               </span>
               {/* Saved on every tap: leaving this screen never loses progress. */}
               {!locked && (
-                <span className="flex items-center gap-1 text-[13px] font-semibold text-success">
-                  <CheckCheck className="size-3.5" /> Saved
+                <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+                  <CheckCheck className="size-3.5 text-success" /> Saved
                 </span>
               )}
             </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-teal-soft/60" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+              <div className="h-full rounded-full bg-teal transition-[width] duration-300" style={{ width: `${(done / Math.max(1, total)) * 100}%` }} />
+            </div>
             {/* Oct 26 2026: say what the checkboxes are for, until everything is ticked. */}
-            {!locked && done < total && (
-              <p className="mt-2.5 flex items-center gap-1.5 text-[13px] font-semibold text-teal-deep">
-                <PackageCheck className="size-4 shrink-0 text-teal" /> Tick each item once it's in the vehicle
-              </p>
-            )}
+            {!locked && done < total && <p className="mt-2.5 text-[13px] text-muted-foreground">Tick each item once it's loaded on the cart.</p>}
           </div>
         </Card>
 
@@ -376,78 +380,5 @@ function Banner({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   );
 }
 
-/** A separate kitchen run for one claimed order: one row to tick, then slide to start. */
-export function Pickup({ id }: { id: string }) {
-  const { s, a } = useApp();
-  const stop = findStop(s, id);
-  const done = checked(s, stop);
-  const sfkVan = VEHICLES.find((v) => v.id === vehicleOf(s, stop.id))!;
 
-  return (
-    <div className="flex h-full flex-col">
-      <TopBar title={`Load stop ${stop.seq}`} subtitle={`${KITCHEN.name} · claimed order ${stop.orderNo}`} onBack={a.back} />
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <Banner icon={<Info />}>Kitchen has this order ready at the kitchen. Keep hot and cold in separate carriers.</Banner>
 
-        <Card className="overflow-hidden">
-          <button
-            onClick={() => a.setOrderLoaded(stop.bags.map((b) => b.id), !done)}
-            className={cn("flex min-h-[72px] w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-300", done && "bg-success-bg")}
-          >
-            <span className={cn("grid size-7 shrink-0 place-items-center rounded-full transition-colors", done ? "bg-success text-white" : "border-2 border-teal")}>
-              {done && <Check className="size-4" strokeWidth={3} />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline justify-between gap-3">
-                <span className={cn("truncate text-[15px] font-semibold", done && "text-muted-foreground")}>
-                  {stop.seq}. {stop.name}
-                </span>
-                <span className="nums shrink-0 text-[13px] font-semibold text-teal-deep">{fmtWindow(stop.windowStart, stop.windowEnd)}</span>
-              </span>
-              <span className="nums block truncate text-[13px] text-muted-foreground">
-                {stop.orderNo} · {stop.orderType}
-              </span>
-              <span className="mt-2 flex items-center gap-1.5">
-                <TempChips stop={stop} />
-                {/* #79: a delivery dispatch moved to an SFK vehicle is loaded there. */}
-                {sfkVan.owner === "sfk" && (
-                  <Chip className="border border-teal/30 text-teal-deep">
-                    <Truck /> {sfkVan.name}
-                  </Chip>
-                )}
-                <span className={cn("ml-auto shrink-0 text-2xs font-semibold", done ? "text-success" : "text-teal")}>{done ? "Loaded" : "Tap when loaded"}</span>
-              </span>
-            </span>
-          </button>
-        </Card>
-      </div>
-
-      {done && (
-        <ActionBar>
-          <SlideToConfirm label="Loaded · start route" onConfirm={() => a.confirmClaimPickup(id)} />
-        </ActionBar>
-      )}
-    </div>
-  );
-}
-
-/** Hot / cold in the same quiet style as Today's route: coloured icon + grey word, no background. */
-function TempChips({ stop }: { stop: Stop }) {
-  return (
-    <span className="flex items-center gap-3">
-      {workOf(stop)
-        .filter((w) => w !== "reusables")
-        .map((w) => (
-          <span key={w} className="inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
-            {w === "hot" ? <Flame className="size-3.5 text-coral" strokeWidth={2.2} /> : <Snowflake className="size-3.5 text-info" strokeWidth={2.2} />}
-            {w === "hot" ? "Hot" : "Cold"}
-          </span>
-        ))}
-    </span>
-  );
-}
-
-/** Small filled chip for the load screens: icon + word. */
-function Chip({ className, children }: { className?: string; children: ReactNode }) {
-  return <span className={cn("inline-flex h-6 items-center gap-1 rounded-full px-2 text-2xs font-semibold [&_svg]:size-3.5", className)}>{children}</span>;
-}

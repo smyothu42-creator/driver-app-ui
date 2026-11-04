@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, ClipboardList, Flashlight, FlashlightOff, Lock, Phone, RotateCw, ScanLine, Truck, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, ClipboardList, Keyboard, Flashlight, FlashlightOff, Lock, Phone, RotateCw, ScanLine, Truck, X } from "lucide-react";
 import { findStop, slipsToday, useApp } from "../store";
 import { DISPATCH, DRIVER, fmtTime, fmtWindow, runOf, workOf, type Stop } from "../data/route";
 import { Button, cn } from "../components/ui";
@@ -28,6 +28,11 @@ export function ScanScreen({ id }: { id?: string }) {
   const next = target && !s.scanned[target.id] ? target : now.find((x) => !s.scanned[x.id]);
   const [torch, setTorch] = useState(false);
   const [wrong, setWrong] = useState(false);
+  // Nov 3 2026 (SFK: slips aren't always printed yet): type the order number instead; it's checked against the
+  // orders dispatch gave this driver today. A small link, since it's the edge case.
+  const [typing, setTyping] = useState(false);
+  const [orderNo, setOrderNo] = useState("");
+  const [wrongNo, setWrongNo] = useState(OTHER_ROUTE_SLIP.orderNo);
 
   // Prototype: tapping the camera or an order stands in for the camera reading that slip's QR.
   const scan = (x: Stop) => {
@@ -37,17 +42,25 @@ export function ScanScreen({ id }: { id?: string }) {
     // Oct 26 2026: no "Slip scanned" pop-up; landing on the order (tracker on Load) is the confirmation.
   };
   // Not on this driver's route: no way forward from here except dispatch.
-  const scanOther = () => {
+  const scanOther = (no = OTHER_ROUTE_SLIP.orderNo) => {
     navigator.vibrate?.([60, 80, 60]);
+    setWrongNo(no);
+    setTyping(false);
     setWrong(true);
   };
+  const digits = orderNo.replace(/\D/g, "");
+  const checkTyped = () => {
+    const x = slips.find((y) => y.orderNo.replace(/\D/g, "") === digits);
+    if (x) scan(x);
+    else scanOther(`ORD-${digits}`);
+  };
 
-  const shownSlip: Stop | undefined = wrong ? { ...(slips[0] ?? findStop(s, "s1")), ...OTHER_ROUTE_SLIP } : (target ?? slips[0]);
+  const shownSlip: Stop | undefined = wrong ? { ...(slips[0] ?? findStop(s, "s1")), ...OTHER_ROUTE_SLIP, orderNo: wrongNo } : (target ?? slips[0]);
 
   return (
     <div className="relative h-full overflow-hidden bg-black text-white">
       {/* Camera feed: the slip lying on a steel pass counter at the kitchen dock. */}
-      <button onClick={() => !wrong && next && scan(next)} aria-label="Simulate scanning a packing slip" className="absolute inset-0 block cursor-default">
+      <button onClick={() => !wrong && !typing && next && scan(next)} aria-label="Simulate scanning a packing slip" className="absolute inset-0 block cursor-default">
         {shownSlip && <CameraFeed slip={shownSlip} torch={torch} />}
       </button>
 
@@ -85,7 +98,7 @@ export function ScanScreen({ id }: { id?: string }) {
               </span>
               <span className="min-w-0">
                 <span className="block text-xl font-bold leading-tight tracking-tight">This isn't on your route</span>
-                <span className="nums mt-1 block text-[15px] leading-snug text-muted-foreground">Slip {OTHER_ROUTE_SLIP.orderNo}. Discuss with dispatch before you load it.</span>
+                <span className="nums mt-1 block text-[15px] leading-snug text-muted-foreground">{wrongNo === OTHER_ROUTE_SLIP.orderNo ? "Slip" : "Order"} {wrongNo}. Discuss with dispatch before you load it.</span>
               </span>
             </div>
             <Button size="lg" className="mt-5 w-full" onClick={() => a.toast(`Calling ${DISPATCH.name}…`)}>
@@ -95,6 +108,38 @@ export function ScanScreen({ id }: { id?: string }) {
               <ScanLine /> Scan another slip
             </Button>
           </div>
+        ) : typing ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (digits.length >= 4) checkTyped();
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <button type="button" aria-label="Back to scanning" onClick={() => setTyping(false)} className="-ml-2 grid size-11 shrink-0 place-items-center rounded-full text-teal-deep">
+                <ArrowLeft className="size-5" />
+              </button>
+              <span className="text-[17px] font-semibold tracking-tight">Enter order number</span>
+            </div>
+            <p className="mt-1 text-[15px] leading-snug text-muted-foreground">No packing slip? Type the number from the order. We check it against your orders from dispatch.</p>
+            <label className="mt-4 flex h-14 items-center rounded-xl border-2 border-teal bg-card px-4 focus-within:ring-2 focus-within:ring-teal/30">
+              <span className="nums text-xl font-semibold text-muted-foreground">ORD-</span>
+              <input
+                autoFocus
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={digits}
+                onChange={(e) => setOrderNo(e.target.value)}
+                placeholder="3109"
+                aria-label="Order number"
+                className="nums min-w-0 flex-1 bg-transparent text-xl font-semibold tracking-wide outline-none placeholder:text-muted-foreground/40"
+              />
+            </label>
+            <Button type="submit" size="lg" className="mt-4 w-full" disabled={digits.length < 4}>
+              <CheckCircle2 /> Check order
+            </Button>
+          </form>
         ) : (
           <>
             <div className="flex items-baseline justify-between gap-3">
@@ -115,10 +160,18 @@ export function ScanScreen({ id }: { id?: string }) {
                 </Button>
               )
             )}
-            {/* Prototype only: shows what happens when a slip from someone else's route is scanned. */}
-            <button onClick={scanOther} className="mt-3 w-full rounded-xl border border-dashed border-control py-2 text-center text-[13px] font-semibold text-muted-foreground">
-              Demo: scan a slip that's not on your route
+            {/* Edge case, so a quiet link, not a second button. */}
+            <button
+              onClick={() => {
+                setOrderNo("");
+                setTyping(true);
+              }}
+              className="mt-1 flex min-h-11 w-full items-center justify-center gap-1.5 text-[15px] font-semibold text-teal-deep"
+            >
+              <Keyboard className="size-4" /> No slip? Enter order number
             </button>
+            {/* Nov 4 2026: the prototype-only "Demo: scan a slip that's not on your route" button is hidden for now.
+                scanOther() and the "Not on your route" sheet stay, so it can come back. */}
           </>
         )}
       </div>

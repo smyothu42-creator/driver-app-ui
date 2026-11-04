@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Ban, BellRing, ChevronDown, CalendarPlus, Clock, Info, ListOrdered, MessageSquare, Phone, Send, Zap } from "lucide-react";
+import { Ban, BellRing, ChevronDown, ChevronUp, CalendarPlus, Clock, Info, ListOrdered, MessageSquare, Phone, Send } from "lucide-react";
 import { useApp, useT, type Msg } from "../store";
 import { DISPATCH, fmtTime } from "../data/route";
 import { Button, cn, TopBar } from "../components/ui";
@@ -101,6 +101,16 @@ export function Inbox() {
 
       <div className="border-t border-border bg-card px-4 pb-7 pt-3">
         {/* Oct 26 2026: premade messages; one tap sends one to dispatch. Oct 27 2026: shown by default, Hide folds them away. */}
+        {/* Nov 4 2026 (review): hidden, the quick messages fold down to their own header row ("Quick messages · Show"),
+            the same row as when they're open, instead of a "Quick" pill squeezed beside the message box. */}
+        {!quick && (
+          <button onClick={() => setQuick(true)} aria-expanded={false} className="-mt-1 mb-2 flex h-11 w-full items-center justify-between">
+            <span className="text-overline">{t("Quick messages")}</span>
+            <span className="flex items-center gap-1 px-1 text-[13px] font-semibold text-teal-deep">
+              <ChevronUp className="size-4" /> {t("Show")}
+            </span>
+          </button>
+        )}
         {quick && (
           <div className="anim-fade mb-3">
             <div className="mb-2 flex items-center justify-between">
@@ -130,17 +140,6 @@ export function Inbox() {
             sendCustom();
           }}
         >
-          {!quick && (
-            <button
-              type="button"
-              aria-label="Show quick messages"
-              aria-expanded={false}
-              onClick={() => setQuick(true)}
-              className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-control bg-card px-3 text-[13px] font-semibold text-teal-deep"
-            >
-              <Zap className="size-4" /> {t("Quick")}
-            </button>
-          )}
           <textarea
             value={custom}
             onChange={(e) => setCustom(e.target.value)}

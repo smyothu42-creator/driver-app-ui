@@ -2,14 +2,14 @@ import { PdfPages } from "../components/PdfView";
 import { AlertTriangle, Info, ClipboardCheck, ClipboardList, Maximize2, Ban, BadgeCheck, Building2, Camera, Car, Check, CheckCircle2, Clock, FileText, MessageSquare, Navigation, Phone, ChevronRight, Recycle, Timer } from "lucide-react";
 import { isOn } from "../data/sprints";
 import { crewOn, findStop, isLoaded, myAssignment, needsKitchenRun, pickupDelivery, pickupsAt, useApp, useT, type Screen, type Sheet } from "../store";
-import { fmtTime, fmtWindow, windowStatus, workOf, type Contact, type Stop, type Work } from "../data/route";
-import { orderSize } from "./Pickup";
-import { Download } from "lucide-react";
+import { DISPATCH, fmtTime, fmtWindow, windowStatus, workOf, type Contact, type Stop, type Work } from "../data/route";
+import { dishOf, optionsOf, orderSize } from "./Pickup";
+import { Download, Headphones, X } from "lucide-react";
 import { type Icon, BowlFood as BowlFoodFill, Package as PackageFill, Recycle as RecycleFill, Truck as TruckFill } from "@phosphor-icons/react";
-import { ActionBar, Button, Card, cn, IconChip, RoleBadge, SlideToConfirm, TopBar, WorkTags, SfkMark } from "../components/ui";
+import { ActionBar, Button, Card, cn, IconChip, RoleBadge, SlideToConfirm, TopBar, WorkTags } from "../components/ui";
 import { PhotoThumb } from "./Proof";
 import accessPhoto from "../assets/access-photo.jpg";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 
 type AppState = ReturnType<typeof useApp>["s"];
 
@@ -19,12 +19,23 @@ export function StopDetail({ id }: { id: string }) {
   const stop = findStop(s, id);
   const st = s.stops[id];
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [proofOpen, setProofOpen] = useState(false);
   const cancelled = st.status === "cancelled";
   const change = s.changes[id];
   const onSite = st.status === "arrived" || st.status === "delivered";
   const pickup = stop.kind === "pickup";
   const skipped = cancelled && st.skip?.status === "approved"; // a reusables pickup dispatch agreed to skip
   const jobs = stopJobs(s, stop);
+  // Nov 3 2026 (review: "clunky to know how to get to the drop-off and view items"): the whole stop is one scroll, the
+  // stage track stuck at the top; tapping a stage scrolls to its card below instead of opening another screen.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const jumpTo = (key: string) => {
+    const el = scrollRef.current;
+    const card = el?.querySelector<HTMLElement>(`[data-stage="${key}"]`);
+    if (!el) return;
+    const top = key === "go" || !card ? 0 : el.scrollTop + card.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    el.scrollTo({ top, behavior: "smooth" });
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -33,10 +44,25 @@ export function StopDetail({ id }: { id: string }) {
         onBack={a.back}
         tone="white"
         // #21: the problem flow, top right of the stop page (Oct 26 2026), away from the main actions at the bottom.
-        right={isOn("dropoff") && !cancelled && st.status !== "delivered" ? <ProblemLink id={id} /> : undefined}
+        right={
+          isOn("dropoff") && !cancelled && st.status !== "delivered" ? (
+            <ProblemLink id={id} />
+          ) : st.status === "delivered" && !pickup && isOn("dropoff") ? (
+            // Nov 4 2026: a done delivery's proof is one tap away top right (where Report was), shown as a dialog.
+            <button onClick={() => setProofOpen(true)} className="mr-2 flex min-h-11 items-center gap-1 px-2 text-[15px] font-semibold text-teal">
+              <BadgeCheck className="size-4" /> Proof of delivery
+            </button>
+          ) : undefined
+        }
       />
 
-      <div className="flex flex-1 flex-col space-y-5 overflow-y-auto overflow-x-hidden">
+      {/* Nov 3 2026: the track sits above the scroll, so it never scrolls away. */}
+      {jobs.length > 0 && (
+        <div className="relative z-10 shrink-0 border-b border-border/60 bg-white px-5 pb-4 pt-3">
+          <JobList id={stop.id} jobs={jobs} there={st.status === "arrived" || st.status === "delivered"} onStage={jumpTo} />
+        </div>
+      )}
+      <div ref={scrollRef} className="flex flex-1 flex-col space-y-5 overflow-y-auto overflow-x-hidden">
 
         {/* Stop identity in one card: who + where, then when + work type. (Map removed Oct 15 2026; navigation has the map.) */}
         <div className="flex flex-1 flex-col overflow-x-clip">
@@ -45,13 +71,8 @@ export function StopDetail({ id }: { id: string }) {
           <div className="flex-1 bg-white px-5 text-foreground">
             {/* Oct 26 2026 (review: "too complex, hard to focus"): one clear order. Who and when, where, what to do, then
                 how to get in. No avatar, pill or grey box; order facts live on Order details. */}
-            <div className="pb-5 pt-3">
-              {/* Oct 26 2026: the stage track first, at the top like Proof of delivery. */}
-              {jobs.length > 0 && (
-                <div className="mb-4">
-                  <JobList id={stop.id} jobs={jobs} there={st.status === "arrived" || st.status === "delivered"} />
-                </div>
-              )}
+            <div className="pb-5">
+              <div className="h-3" />
               <h1 className="text-2xl font-bold leading-tight tracking-tight">{stop.name}</h1>
               <p className="nums mt-1 flex items-center gap-1.5 text-[17px] font-semibold text-teal-deep">
                 <Clock className="size-4" />
@@ -64,6 +85,14 @@ export function StopDetail({ id }: { id: string }) {
                 <br />
                 {stop.city}
               </p>
+              {/* Nov 4 2026: "Ask dispatch to skip" lives with the stop's name and address (was in the bottom bar /
+                  under the reusables list), until a request is sent. */}
+              {isOn("reusables") && pickup && !st.skip && st.status !== "delivered" && !cancelled && !pickupDelivery(s, stop) && (
+                <Button size="sm" variant="outline" className="mt-3 h-10 gap-1.5 px-4 text-[15px]" onClick={() => a.openSheet({ name: "skip", id })}>
+                  {/* Nov 4 2026: said the way a driver thinks of it: they can't do this pickup today, so they ask dispatch. */}
+                  <Ban /> Can't pick up?
+                </Button>
+              )}
               {/* What to do here. Review Oct 14 2026: work type on every stop. */}
               {/* Oct 26 2026: the "Use SFK Van" note (#79) removed from the stop page; the van shows on Order details. */}
               {jobs.length === 0 && (
@@ -117,17 +146,18 @@ export function StopDetail({ id }: { id: string }) {
             {/* Review Oct 14 2026: instructions come first, before departure, on the way and on arrival.
                 Oct 26 2026: in the same white panel as the stop, just a divider above (no separate card). */}
             {!cancelled && <StopInstructions stop={stop} arrived={st.status === "arrived"} embedded />}
+            {/* Nov 3 2026: what to drop off, set up and collect, in the track's order, on this same page. */}
+            <StageCards stop={stop} />
           </div>
 
         </div>
 
 
-        {/* Reusables pickup: its window, where it's picked up, and any skip request (Oct 21 2026). */}
-        {isOn("reusables") && pickup && <PickupStatus stop={stop} />}
+        {/* Reusables pickup: its window, what to collect and any skip request now sit in the white page (PickupStage). */}
 
         {isOn("team") && <TeamCard stopId={id} onSite={onSite} />}
 
-        {st.status === "delivered" && !pickup && isOn("dropoff") && <ProofCard stop={stop} onOpen={() => setPhotoOpen(true)} />}
+        {/* Nov 4 2026: the proof isn't on the page any more; it opens as a dialog from "Proof of delivery" top right. */}
         {st.status === "delivered" && !pickup && !isOn("dropoff") && (
           <div className="mx-4 flex items-center gap-2 rounded-xl bg-success-bg px-3 py-2.5 text-[13px] font-semibold text-success">
             <CheckCircle2 className="size-4" /> Delivered {fmtTime(st.deliveredAt!)}
@@ -141,34 +171,20 @@ export function StopDetail({ id }: { id: string }) {
 
         {/* #2 site + backup contacts live in the "Customer" sheet (button at the top). */}
 
-        {/* #53 / #83: what to collect, with the expected count and the packing list. */}
-        {isOn("reusables") && pickup && stop.reusables && (
-          <section className="px-4">
-            <SectionTitle
-              action={
-                <button onClick={() => a.openSheet({ name: "packingList", id })} className="flex h-10 items-center gap-1.5 rounded-full border border-control bg-card px-3.5 text-[13px] font-semibold text-teal">
-                  <Download className="size-4" /> Packing list
-                </button>
-              }
-            >
-              To collect
-            </SectionTitle>
-            <Card className="divide-y divide-border border-border-strong">
-              {stop.reusables.map((x) => (
-                <div key={x.id} className="flex items-center gap-3 px-4 py-3">
-                  <span className="min-w-0 flex-1 text-[15px] font-semibold">{x.label}</span>
-                  <span className="nums text-[15px] font-bold">{x.expected}</span>
-                </div>
-              ))}
-            </Card>
-          </section>
-        )}
 
         {/* Bottom breathing room when the instructions panel isn't the last, full-height block. */}
         {cancelled && <div className="h-1 shrink-0" aria-hidden />}
       </div>
 
       <StopActions stop={stop} />
+
+      {proofOpen && (
+        <div className="anim-fade absolute inset-0 z-50 grid place-items-center bg-black/40 px-4" onClick={() => setProofOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-label="Proof of delivery" className="anim-alert max-h-[85%] w-full overflow-y-auto rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <ProofCard stop={stop} onOpen={() => setPhotoOpen(true)} onClose={() => setProofOpen(false)} />
+          </div>
+        </div>
+      )}
 
       {photoOpen && (
         <div className="anim-fade absolute inset-0 z-50 flex flex-col bg-black" onClick={() => setPhotoOpen(false)}>
@@ -256,10 +272,13 @@ function TeamCard({ stopId, onSite }: { stopId: string; onSite: boolean }) {
 function HelpRow({ stop }: { stop: Stop }) {
   const { s, a } = useApp();
   const enRoute = s.stops[stop.id].status === "en_route";
-  // Oct 26 2026: quiet text links under the main action (message, call, Google Maps on the way), so only one big button.
+  // Oct 26 2026: quiet text links next to the main action (message, call, Google Maps on the way), so only one big button.
+  // Nov 4 2026 (review: "should these be above the big orange one so they don't get accidentally hit?"): they sit above
+  // the main button now, so the big button is the last thing by the thumb and the home bar, and a tap that lands
+  // low never calls or messages someone by mistake.
   const link = "flex min-h-11 items-center gap-1.5 px-2 text-[15px] font-semibold text-teal-deep";
   return (
-    <div className="-mb-2 flex items-center justify-center gap-2">
+    <div className="-mt-1 flex items-center justify-center gap-2">
       <button className={link} onClick={() => a.openSheet({ name: "people", id: stop.id, who: "all" })}>
         <Phone className="size-4" /> Call
       </button>
@@ -296,7 +315,7 @@ export function ContactRow({ c, tag }: { c: Contact; tag: string }) {
 }
 
 /** What was logged at the drop (#4, #12, #13, #75). */
-function ProofCard({ stop, onOpen }: { stop: Stop; onOpen: () => void }) {
+function ProofCard({ stop, onOpen, onClose }: { stop: Stop; onOpen: () => void; onClose?: () => void }) {
   const { s } = useApp();
   const st = s.stops[stop.id];
   const onTime = st.deliveredAt! <= stop.windowEnd;
@@ -322,8 +341,8 @@ function ProofCard({ stop, onOpen }: { stop: Stop; onOpen: () => void }) {
     ...(st.setupEndAt || st.serviceEndAt ? ([["Setup / service", `${st.setupEndAt ? fmtTime(st.setupEndAt) : "—"} / ${st.serviceEndAt ? fmtTime(st.serviceEndAt) : "—"}`]] as [string, ReactNode][]) : []),
   ];
   return (
-    <section className="px-4">
-      <Card className="overflow-hidden border-border-strong">
+    <section className={onClose ? undefined : "px-4"}>
+      <Card className={cn("overflow-hidden border-border-strong", onClose && "rounded-3xl border-0 shadow-raised")}>
         <div className="flex items-center gap-3 p-4">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-success text-white">
             <BadgeCheck className="size-5" />
@@ -332,6 +351,11 @@ function ProofCard({ stop, onOpen }: { stop: Stop; onOpen: () => void }) {
             <div className="nums text-[17px] font-semibold leading-tight">Delivered {fmtTime(st.deliveredAt!)}</div>
             <div className={cn("text-[13px] font-semibold", onTime ? "text-success" : "text-warning")}>{onTime ? "On time" : `Delayed · ${st.deliveredAt! - stop.windowEnd} min late`}</div>
           </div>
+          {onClose && (
+            <button onClick={onClose} aria-label="Close" className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-foreground/70">
+              <X className="size-5" />
+            </button>
+          )}
         </div>
         {!st.officeOverride && st.photos > 0 && (
           <div className="grid grid-cols-3 gap-2 px-4 pb-4">
@@ -393,9 +417,9 @@ function StopActions({ stop }: { stop: Stop }) {
     // Claimed after the main pickup (step 4): load it before driving to the customer.
     return (
       <ActionBar>
-        <Button size="lg" className="w-full" onClick={() => a.push({ name: "pickup", id: stop.id })}>
-          <SfkMark className="size-5" /> Back to kitchen to load
-        </Button>
+        {/* Nov 4 2026 (review: "don't need this page at all"): no separate "Load stop N" page; the driver picks the
+            order up at the kitchen and slides here, which puts it in the vehicle and starts the drive. */}
+        <SlideToConfirm label="Slide when it's loaded at the kitchen" onConfirm={() => a.confirmClaimPickup(stop.id)} />
       </ActionBar>
     );
   }
@@ -416,23 +440,23 @@ function StopActions({ stop }: { stop: Stop }) {
   if (st.status === "arrived" && stop.kind === "pickup") {
     return (
       <ActionBar>
-        <Button size="lg" className="w-full" onClick={() => a.push({ name: "collect", id: stop.id })}>
+        <HelpRow stop={stop} />
+        {/* Nov 4 2026: the same Collect reusables sheet as on a delivery (was its own page). */}
+        <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "collect", id: stop.id, at: stop.id })}>
           <Recycle /> {t("Collect reusables")}
         </Button>
-        <SkipLink stop={stop} />
-        <HelpRow stop={stop} />
       </ActionBar>
     );
   }
-  // Oct 26 2026: first check off every item as it's put down; then setup (if any), then the photo.
+  // Nov 3 2026: first the drop-off (how it's left + the order list to show the receiver); then setup (if any), then the photo.
   const dropLeft = isOn("dropoff") && stop.bags.some((b) => !st.dropDone?.[b.id]);
   if (st.status === "arrived" && dropLeft) {
     return (
       <ActionBar>
-        <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "dropCheck", id: stop.id })}>
-          <ClipboardCheck /> {t("Check drop-off")}
-        </Button>
         <HelpRow stop={stop} />
+        <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "dropCheck", id: stop.id })}>
+          <ClipboardCheck /> {t("Drop off order")}
+        </Button>
       </ActionBar>
     );
   }
@@ -441,10 +465,10 @@ function StopActions({ stop }: { stop: Stop }) {
   if (st.status === "arrived" && setupLeft) {
     return (
       <ActionBar>
+        <HelpRow stop={stop} />
         <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "setup", id: stop.id })}>
           <ClipboardList /> {t("Start setup")}
         </Button>
-        <HelpRow stop={stop} />
       </ActionBar>
     );
   }
@@ -453,20 +477,20 @@ function StopActions({ stop }: { stop: Stop }) {
   if (st.status === "arrived" && toCollect.length > 0) {
     return (
       <ActionBar>
+        <HelpRow stop={stop} />
         <Button size="lg" className="w-full" onClick={() => a.openSheet({ name: "collect", id: toCollect[0], at: stop.id })}>
           <Recycle /> {t("Collect reusables")}
         </Button>
-        <HelpRow stop={stop} />
       </ActionBar>
     );
   }
   if (st.status === "arrived") {
     return (
       <ActionBar>
+        <HelpRow stop={stop} />
         <Button size="lg" className="w-full" onClick={() => a.push({ name: "camera", id: stop.id })}>
           <Camera /> {t("Take delivery photo")}
         </Button>
-        <HelpRow stop={stop} />
       </ActionBar>
     );
   }
@@ -478,7 +502,6 @@ function StopActions({ stop }: { stop: Stop }) {
         <Button size="lg" className="w-full" onClick={() => a.jump((p) => ({ stack: [...p.stack.filter((x) => !(x.name === "stop" && x.id === stop.id)), { name: "stop" as const, id: along.id }] }))}>
           <Recycle /> Go to {along.name} delivery
         </Button>
-        <SkipLink stop={stop} />
       </ActionBar>
     );
   // Oct 26 2026: this page (not Home) is where the driver comes back from Google Maps, so it has the same
@@ -486,78 +509,74 @@ function StopActions({ stop }: { stop: Stop }) {
   if (st.status === "en_route")
     return (
       <ActionBar>
-        <SlideToConfirm label={t("Slide when you arrive")} tone="teal" onConfirm={() => a.arrive(stop.id, stop.driveMins)} />
         <HelpRow stop={stop} />
+        <SlideToConfirm label={t("Slide when you arrive")} tone="teal" onConfirm={() => a.arrive(stop.id, stop.driveMins)} />
       </ActionBar>
     );
   return (
     <ActionBar>
+      <HelpRow stop={stop} />
       <Button size="lg" className="w-full" onClick={() => a.startNav(stop.id)}>
         <Navigation /> {t("Start navigation")}
       </Button>
-      <SkipLink stop={stop} />
-      <HelpRow stop={stop} />
     </ActionBar>
   );
 }
 
-/** Reusables pickup: "Ask dispatch to skip" until a request is sent. */
-function SkipLink({ stop }: { stop: Stop }) {
-  const { s, a } = useApp();
-  if (!isOn("reusables") || stop.kind !== "pickup" || s.stops[stop.id].skip) return null;
-  return (
-    <button onClick={() => a.openSheet({ name: "skip", id: stop.id })} className="w-full py-1 text-center text-[15px] font-semibold text-teal">
-      Ask dispatch to skip this pickup
-    </button>
-  );
-}
 
 /**
- * Reusables pickup status, under the header: the pickup window (open / closing / missed), whether it's picked up
- * during a delivery at the same address, and where a skip request stands.
+ * Reusables pickup, as one stage section of the white page (Nov 4 2026, review: "out of the theme and looks complex"):
+ * the same band, big icon and title as Drop off / Set up, the window as the line under the title (amber when closing,
+ * red when missed), the reusables as edge-to-edge rows, then the packing list and the skip link as quiet rows.
+ * Riding along with a delivery or a skip request show as one plain note under the title.
  */
-function PickupStatus({ stop }: { stop: Stop }) {
+function PickupStage({ stop }: { stop: Stop }) {
   const { s } = useApp();
   const st = s.stops[stop.id];
   const done = st.status === "delivered" || st.status === "cancelled";
   const w = windowStatus(stop, s.clock);
   const along = pickupDelivery(s, stop);
-  const tone = w.state === "missed" ? "border-danger-border bg-danger-bg text-danger" : w.state === "closing" ? "border-warning-border bg-warning-bg text-warning" : "border-teal-soft bg-teal-wash text-teal-deep";
+  const items = stop.reusables ?? [];
   return (
-    <div className="mx-4 space-y-2">
-      {!done && (
-        <div className={cn("flex gap-3 rounded-2xl border p-3.5", tone)}>
-          <Clock className="mt-0.5 size-5 shrink-0" />
-          <span className="nums text-[15px]">
-            <b className="font-semibold">Pickup window {fmtWindow(stop.windowStart, stop.windowEnd)}</b>
-            <span className="block text-[13px]">{w.text}</span>
-          </span>
-        </div>
-      )}
-      {along && (
-        <div className="flex gap-3 rounded-2xl border border-border bg-card p-3.5">
-          <Recycle className="mt-0.5 size-5 shrink-0 text-teal" />
-          <span className="text-[15px]">
-            <b className="font-semibold">Pick up during your delivery to {along.name}</b>
-            <span className="block text-[13px] text-muted-foreground">Same address, stop {along.seq}. Count it there with the delivery.</span>
-          </span>
-        </div>
-      )}
-      {st.skip && (
-        <div className={cn("flex gap-3 rounded-2xl border p-3.5", st.skip.status === "declined" ? "border-warning-border bg-warning-bg text-warning" : "border-border bg-muted")}>
-          <Ban className="mt-0.5 size-5 shrink-0" />
-          <span className="nums text-[15px]">
-            <b className="font-semibold">
-              {st.skip.status === "pending" ? "Skip requested · waiting for dispatch" : st.skip.status === "approved" ? `Skipped · approved by dispatch ${fmtTime(st.skip.decidedAt!)}` : "Dispatch needs this pickup today"}
-            </b>
-            <span className="block text-[13px] opacity-80">
+    <StageCard
+      stage="collect"
+      icon={RecycleFill}
+      title="Collect reusables"
+      action={<PackingListButton id={stop.id} />}
+      done={st.status === "delivered"}
+      status={st.status === "delivered" ? "Done" : ""}
+      sub={
+        <span className={cn("nums", !done && w.state === "missed" ? "font-semibold text-danger" : !done && w.state === "closing" ? "font-semibold text-warning" : undefined)}>
+          Pickup window {fmtWindow(stop.windowStart, stop.windowEnd)}
+          {!done && w.state !== "upcoming" && ` · ${w.text}`}
+        </span>
+      }
+    >
+      {(along || st.skip) && (
+        <p className={cn("my-3 pl-[80px] pr-5 text-[15px] leading-snug", st.skip?.status === "declined" ? "text-warning" : "text-muted-foreground")}>
+          {st.skip ? (
+            <>
+              <b className="font-semibold text-foreground">
+                {st.skip.status === "pending" ? "Skip requested · waiting for dispatch" : st.skip.status === "approved" ? `Skipped · approved by dispatch ${fmtTime(st.skip.decidedAt!)}` : "Dispatch needs this pickup today"}
+              </b>
+              {" · "}
               {st.skip.reason}
               {st.skip.status === "pending" && ". Keep it on your route until they reply."}
-            </span>
-          </span>
-        </div>
+            </>
+          ) : (
+            <>
+              <b className="font-semibold text-foreground">Pick up during your delivery to {along!.name}</b> · same address, stop {along!.seq}. Count it there with the delivery.
+            </>
+          )}
+        </p>
       )}
-    </div>
+      <ItemList>
+        {items.map((x) => (
+          <ItemRow key={x.id} on={st.status === "delivered"} count={x.expected} label={x.label} />
+        ))}
+      </ItemList>
+      <div className="h-4" />
+    </StageCard>
   );
 }
 
@@ -630,7 +649,7 @@ const itemsText = (stop: Stop) => (stop.reusables ?? []).map((x) => `${x.expecte
  * pickup is very hard to miss. The buttons sit on the rows (no separate button row), which keeps Parking, Get in and
  * Delivery instructions on screen. Each job ticks off once it's done. Used on the stop page and Home.
  */
-export function JobList({ id, jobs, footer, there }: { id: string; jobs: Job[]; footer?: ReactNode; there?: boolean }) {
+export function JobList({ id, jobs, footer, there, onStage }: { id: string; jobs: Job[]; footer?: ReactNode; there?: boolean; onStage?: (key: string) => void }) {
   const { a } = useApp();
   // Oct 26 2026 (review: drivers only glance): no box and no job rows, just the stop's stages as a trip-style track:
   // Go to place → Drop off → Set up → Collect. Tap a stage for its screen.
@@ -649,9 +668,11 @@ export function JobList({ id, jobs, footer, there }: { id: string; jobs: Job[]; 
     ...(setup ? [{ key: "setup", label: "Set up", icon: BowlFoodFill, done: setup.done, open: () => go([setup]) }] : []),
     ...(collectJobs.length ? [{ key: "collect", label: "Collect", icon: RecycleFill, done: collectJobs.every((j) => j.done), open: () => go(collectJobs) }] : []),
   ];
+  // Nov 3 2026: on the stop page a stage tap scrolls to its card on the same page instead of opening another screen.
+  const track = onStage ? stages.map((x) => ({ ...x, open: () => onStage(x.key) })) : stages;
   return (
     <section>
-      <StageTrack stages={stages} />
+      <StageTrack stages={track} />
       {footer && <div className="mt-4 overflow-hidden rounded-xl">{footer}</div>}
     </section>
   );
@@ -703,6 +724,7 @@ export function StageTrack({ stages }: { stages: Stage[] }) {
   );
 }
 
+// Nov 4 2026: on the stop page (embedded) a soft 8px grey band divides the address from the instructions below it.
 export function StopInstructions({ stop, arrived, bleed, plain, embedded }: { stop: Stop; arrived: boolean; bleed?: boolean; plain?: boolean; embedded?: boolean }) {
   const t = useT();
   const { a } = useApp();
@@ -752,14 +774,15 @@ export function StopInstructions({ stop, arrived, bleed, plain, embedded }: { st
   // One quiet row per step: icon, a short label, then the text. Oct 26 2026: the icon stays after arriving (no step numbers).
   // Oct 26 2026: no yellow highlight on the order-only note; "From <name>" says it's for this order.
   return (
-    <Card className={cn("overflow-hidden border-border-strong", bleed && "-mx-px !w-[calc(100%+2px)] flex-1 rounded-b-none rounded-t-[28px] border-b-0 pb-6 shadow-none", plain && "rounded-none border-x-0 border-b-0 border-t border-border shadow-none", embedded && "-mx-5 !w-[calc(100%+40px)] rounded-none border-x-0 border-b-0 border-t border-border/60 bg-transparent pb-2 shadow-none")}>
+    <Card className={cn("overflow-hidden border-border-strong", bleed && "-mx-px !w-[calc(100%+2px)] flex-1 rounded-b-none rounded-t-[28px] border-b-0 pb-6 shadow-none", plain && "rounded-none border-x-0 border-b-0 border-t border-border shadow-none", embedded && "-mx-5 !w-[calc(100%+40px)] rounded-none border-x-0 border-b-0 border-t-8 border-muted bg-transparent pb-0 shadow-none")}>
       {/* Oct 27 2026: the full delivery details PDF SFK keeps for this address (parking, getting in, delivery
           instructions, with maps and diagrams), first in the list and one tap away, rather than copied line by line. */}
       {stop.detailsPdf && (
         // Oct 27 2026 (second look): a document card, like a file attachment, instead of a cropped page. A small
         // thumbnail of the whole page, the title, and chips for what's inside; tap opens the in-app viewer.
+        // Nov 4 2026: the tint a little stronger (full teal wash, not 60%), so the card reads as a card.
         <div className={cn("px-4 py-3.5", rows.length > 0 && "border-b border-border", (plain || embedded) && "px-5")}>
-          <button onClick={() => a.openSheet({ name: "pdf", id: stop.id })} className="block w-full rounded-[8px] border border-teal/20 bg-teal-wash/60 p-3 text-left active:scale-[0.99]">
+          <button onClick={() => a.openSheet({ name: "pdf", id: stop.id })} className="block w-full rounded-[8px] border border-teal/25 bg-teal-wash p-3 text-left active:scale-[0.99]">
             <span className="flex items-center gap-3">
               <span className="relative block h-[76px] w-[58px] shrink-0 overflow-hidden rounded-md border border-border bg-white shadow-card">
                 <PdfPages url={stop.detailsPdf} first />
@@ -779,7 +802,9 @@ export function StopInstructions({ stop, arrived, bleed, plain, embedded }: { st
           </button>
         </div>
       )}
-      <ol className="divide-y divide-border">
+      {/* Nov 4 2026: a hairline after the last row too, except on the stop page, where the grey Drop off band right
+          below already closes the list. */}
+      <ol className={cn("divide-y divide-border", !embedded && "border-b border-border")}>
         {rows.map((r) => (
           <li key={r.key} data-flow={r.flow} className={cn("flex scroll-mt-16 gap-3 px-4 py-3.5", plain && "px-5", embedded && "px-5")}>
             {/* Minimal marker: one icon size for every row, in line with the 17px label. No filled circle. */}
@@ -800,15 +825,217 @@ export function StopInstructions({ stop, arrived, bleed, plain, embedded }: { st
   );
 }
 
-/** Section title in the Home style: bold capitals. Optional action on the right. */
-function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+/**
+ * Nov 3 2026 (review: a driver won't think to tap "Drop off" to see what they're carrying): every stage of a delivery
+ * as a card on the stop page, in the stage track's order: Drop off (the order and its items), Set up (its steps) and
+ * Collect (the reusables). Read-only: the button at the bottom still does the next step; ticks made there show here.
+ */
+function StageCards({ stop }: { stop: Stop }) {
+  const { s } = useApp();
+  const st = s.stops[stop.id];
+  if (stop.kind === "pickup") return isOn("reusables") && !(st.status === "cancelled" && st.skip?.status !== "approved") ? <div className="-mx-5"><PickupStage stop={stop} /></div> : null;
+  if (st.status === "cancelled") return null;
+  const there = st.status === "arrived" || st.status === "delivered";
+  const delivered = st.status === "delivered";
+  const putDown = st.dropDone ?? {};
+  const put = stop.bags.filter((b) => putDown[b.id]).length;
+  const total = stop.bags.length;
+  const dropDone = delivered || (total > 0 && put === total);
+
+  // Individual meals by dish ("9× Lemon chicken rice bowl"), most first; family style in the kitchen's groups.
+  const byDish = stop.customerType !== "family";
+  const dishes = Object.values(
+    stop.bags.reduce<Record<string, { name: string; items: Stop["bags"] }>>((acc, b) => {
+      (acc[dishOf(b)] ??= { name: dishOf(b), items: [] }).items.push(b);
+      return acc;
+    }, {}),
+  ).sort((x, y) => y.items.length - x.items.length || x.name.localeCompare(y.name));
+  const groups = stop.bags.reduce<{ name?: string; items: Stop["bags"] }[]>((acc, b) => {
+    const g = acc.find((x) => x.name === b.group);
+    if (g) g.items.push(b);
+    else acc.push({ name: b.group, items: [b] });
+    return acc;
+  }, []);
+  const isPut = (items: Stop["bags"]) => delivered || (there && items.every((b) => putDown[b.id]));
+
+  const steps = isOn("dropoff") ? stop.setup ?? [] : [];
+  const stepsDone = steps.filter((_, i) => st.setupDone?.[i]).length;
+  const setupDone = steps.length > 0 && (stepsDone === steps.length || !!st.setupEndAt);
+
+  const collect = isOn("reusables") ? [...(stop.reusables ? [stop] : []), ...pickupsAt(s, stop)] : [];
+  const collected = (x: Stop) => (x.id === stop.id ? !!st.collectResult : s.stops[x.id].status === "delivered");
+
   return (
-    <div className="mb-2.5 flex items-center justify-between gap-3 px-1">
-      <h2 className="text-[15px] font-extrabold uppercase tracking-wide text-foreground">{children}</h2>
-      {action}
+    <div className="-mx-5">
+      {total > 0 && (
+        <StageCard
+          stage="drop"
+          icon={PackageFill}
+          title="Drop off"
+          done={dropDone}
+          status={dropDone ? "Done" : ""}
+          // Nov 4 2026: no hot / cold chip and no order line in this header (removed on review).
+        >
+          <ItemList>
+            {byDish
+              ? dishes.map((d) => {
+                  const options = d.items.filter((b) => optionsOf(b)).map((b) => `${optionsOf(b)} (${b.label.split(" ")[0]})`);
+                  return (
+                    <ItemRow key={d.name} on={isPut(d.items)} count={d.items.length} label={d.name}>
+                      {options.length > 0 && <span className="mt-0.5 block text-[15px] leading-snug text-muted-foreground">{options.join(", ")}</span>}
+                    </ItemRow>
+                  );
+                })
+              : groups.map((g, gi) => (
+                  <Fragment key={g.name ?? gi}>
+                    {g.name && <li className="bg-muted/40 px-5 py-2 text-[15px] font-semibold text-muted-foreground">{g.name}</li>}
+                    {g.items.map((b) => (
+                      <ItemRow key={b.id} on={isPut([b])} label={b.label}>
+                        {b.detail && <span className="mt-0.5 block text-[15px] leading-snug text-muted-foreground">{b.detail}</span>}
+                      </ItemRow>
+                    ))}
+                  </Fragment>
+                ))}
+          </ItemList>
+        </StageCard>
+      )}
+
+      {steps.length > 0 && (
+        <StageCard stage="setup" icon={BowlFoodFill} title="Set up" done={setupDone} status={setupDone ? "Done" : stepsDone > 0 ? `${stepsDone} of ${steps.length}` : stop.guestReadyTime ? `Done by ${fmtTime(stop.guestReadyTime)}` : ""}>
+          <ItemList>
+            {steps.map((step, i) => (
+              <ItemRow key={step} on={!!st.setupDone?.[i] || !!st.setupEndAt} count={i + 1} numbered label={step} />
+            ))}
+          </ItemList>
+        </StageCard>
+      )}
+
+      {collect.length > 0 && (
+        <StageCard stage="collect" icon={RecycleFill} title="Collect reusables" done={collect.every(collected)} status={collect.every(collected) ? "Done" : ""}>
+          <div className="space-y-3">
+            {collect.map((x) => (
+              <div key={x.id}>
+                {/* A pickup riding along says which order it's from. */}
+                {(x.id !== stop.id || x.fromOrder) && (
+                  // Nov 4 2026: highlighted a little: darker text, the order number in bold teal.
+                  <p className="nums mb-2 mt-3 pl-[80px] pr-5 text-[15px] text-foreground/80">
+                    From order <b className="font-semibold text-teal-deep">{x.fromOrder?.orderNo ?? x.orderNo}</b>
+                    {x.fromOrder ? ` · ${x.fromOrder.date}` : ""}
+                  </p>
+                )}
+                <ItemList>
+                  {(x.reusables ?? []).map((r) => (
+                    <ItemRow key={r.id} on={collected(x)} count={r.expected} label={r.label} />
+                  ))}
+                </ItemList>
+              </div>
+            ))}
+            {/* Nov 4 2026: this note is written by dispatch, so it reads as a comment from them: the dispatch headset
+                in the count column, then a speech bubble with who wrote it, like a message in the Inbox. */}
+            {stop.returns && (
+              <div className="flex items-start gap-3 pb-4 pr-5 pl-5">
+                <span className="grid w-12 shrink-0 place-items-center">
+                  <span className="grid size-9 place-items-center rounded-full bg-teal-wash text-teal-deep">
+                    <Headphones className="size-[18px]" />
+                  </span>
+                </span>
+                <div className="min-w-0 flex-1 rounded-2xl rounded-tl-md bg-muted px-3.5 py-2.5">
+                  <p className="text-[13px] font-semibold text-teal-deep">Dispatch · {DISPATCH.name}</p>
+                  <p className="mt-0.5 text-[15px] leading-snug text-foreground">{stop.returns}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </StageCard>
+      )}
     </div>
   );
 }
+
+/**
+ * One stage: the track's icon, a title (with an optional line under it), and where it stands (in words, with a tick
+ * once done). Nov 4 2026 (review: "still out of theme and look floating"): no boxed cards inside the page any more.
+ * Each stage is a section of the page, and its rows run edge to edge with hairlines, like the route list.
+ */
+/** Nov 4 2026: the reusables packing slip as a small download-only button, for the right of a section header. */
+export function PackingListButton({ id }: { id: string }) {
+  const { a } = useApp();
+  return (
+    <button onClick={() => a.openSheet({ name: "packingList", id })} aria-label="Download packing list" title="Packing list" className="grid size-11 shrink-0 place-items-center rounded-full border border-border-strong bg-white text-teal-deep active:bg-teal-wash">
+      <Download className="size-5" />
+    </button>
+  );
+}
+
+export function StageCard({ stage, icon: I, title, status, done, sub, tag, action, children }: { stage: string; icon: Icon; title: string; status: string; done: boolean; sub?: ReactNode; tag?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    // Nov 4 2026: each stage's header (icon, title, status and the line under it) sits on a soft grey band, like the
+    // day headers on Schedule; its rows follow on white.
+    <section data-stage={stage}>
+      <div className="bg-muted/70 px-5 py-3.5">
+        {/* Nov 4 2026: the icon is centred on the title and the line under it together (both lines sit beside it). */}
+        <div className="flex items-center gap-3">
+          {/* Every stage icon sits in the same 48px tile, so box, bowl and recycle read as one set. White on the band. */}
+          <span className={cn("grid size-12 shrink-0 place-items-center rounded-[14px] shadow-[0_0_0_1px_rgba(0,0,0,0.05)]", done ? "bg-success-bg text-success" : "bg-white text-teal-deep")}>
+            <I weight="fill" className="size-[28px]" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <h2 className="min-w-0 truncate text-[20px] font-semibold leading-snug tracking-tight">{title}</h2>
+                {tag}
+              </span>
+              {/* Nov 4 2026: no "✓ Done" in the header; the green tile and the ticked rows already say it. */}
+              {!done && status && <span className="nums shrink-0 text-[15px] text-muted-foreground">{status}</span>}
+            </span>
+            {sub && <span className="mt-0.5 block text-[15px] text-muted-foreground">{sub}</span>}
+          </span>
+          {/* Nov 4 2026: an optional small action on the right of the header (e.g. download the packing list). */}
+          {action}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function ItemList({ children }: { children: ReactNode }) {
+  return <ul className="divide-y divide-border border-y border-border bg-card">{children}</ul>;
+}
+
+/**
+ * A read-only line: the count (or step number), then the item; green with a tick once done.
+ * Nov 4 2026: calmer: the count is 15px semibold teal (not a big bold number), a step number sits in a small soft
+ * circle, the item is medium weight, and options are plain grey.
+ */
+export function ItemRow({ on, count, numbered, label, children }: { on: boolean; count?: number; numbered?: boolean; label: string; children?: ReactNode }) {
+  return (
+    <li className={cn("flex min-h-[60px] items-center gap-3 px-5 py-3.5 transition-colors", on && "bg-success-bg")}>
+      {count != null &&
+        (numbered ? (
+          // Nov 4 2026: the number / count column is as wide as the stage icon tile (48px), so every row's text starts
+          // exactly under the section title.
+          <span className="grid w-12 shrink-0 place-items-center">
+            {/* Nov 4 2026: a finished step's number turns into a solid green tick, so done steps read at a glance. */}
+            <span className={cn("nums grid size-7 place-items-center rounded-full text-[15px] font-semibold", on ? "bg-success text-white" : "bg-teal-wash text-teal-deep")}>{on ? <Check className="size-4" strokeWidth={3} /> : count}</span>
+          </span>
+        ) : (
+          <span className={cn("nums w-12 shrink-0 text-center text-[17px] font-semibold", on ? "text-muted-foreground" : "text-teal-deep")}>{count}×</span>
+        ))}
+      <span className="min-w-0 flex-1">
+        <span className={cn("block text-[17px] font-medium leading-snug", on && "text-foreground/60")}>{label}</span>
+        {children}
+      </span>
+      {/* Done items (counts) get the same solid green tick on the right; numbered steps already show it on the left. */}
+      {on && !numbered && (
+        <span aria-label="Done" className="grid size-7 shrink-0 place-items-center rounded-full bg-success text-white">
+          <Check className="size-4" strokeWidth={3} />
+        </span>
+      )}
+    </li>
+  );
+}
+
 
 /** #21 problem flow, as a quiet red link under the main action (same as the kitchen load screens). */
 function ProblemLink({ id }: { id: string }) {

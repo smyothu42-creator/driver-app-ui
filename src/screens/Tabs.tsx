@@ -1,5 +1,5 @@
 import { Bell, BellRing, CalendarOff, Camera, Car, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, Navigation, RadioTower, RotateCcw, ShieldAlert, Smartphone, History as HistoryIcon } from "lucide-react";
-import { liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm, type NotifPrefs } from "../store";
+import { atKitchen, toKitchenNow, liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm, type NotifPrefs } from "../store";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_DATE, ROUTE_ISO, SETTINGS, KITCHEN_READY, driveBetween, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
 import type { Availability } from "../data/availability";
@@ -77,19 +77,85 @@ function useDragRail(rail: React.RefObject<HTMLDivElement | null>, step: number,
  * Route tab (Oct 21 2026): no map, just today's route as a timeline (kitchen pickups and stops in order).
  * Same mint header + white panel as Schedule. MapTab below is kept for when the map comes back.
  */
-export function RouteTab() {
+/** Route tab header: title and date on the left, the Requests / Inbox pill on the right. */
+function RouteTitle() {
   const t = useT();
   return (
-    <div className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0 px-1">
+        <h1 className="text-2xl font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
+        <p className="nums mt-0.5 text-[15px] font-semibold text-teal-deep/80">{ROUTE_DATE}</p>
+      </div>
+      <HeaderActions />
+    </div>
+  );
+}
+
+/**
+ * Nov 4 2026 (review): once the header has scrolled away, a compact copy (title, date, Requests / Inbox) stays pinned
+ * at the top. Its duty card slides away while the driver scrolls down the list and slides back as soon as they scroll
+ * up. Kept smooth on fast scrolls: the scroll is read once per frame, state only changes when something flips (so the
+ * route list never re-renders while scrolling), and both moves are transform + opacity only (no layout per frame).
+ */
+function PinnedRouteHeader({ anchor }: { anchor: React.RefObject<HTMLDivElement | null> }) {
+  const [pinned, setPinned] = useState(false);
+  const [card, setCard] = useState(false);
+  useEffect(() => {
+    const el = anchor.current?.parentElement; // the app's scroll area
+    if (!el) return;
+    let last = el.scrollTop;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const y = el.scrollTop;
+      const dy = y - last;
+      if (Math.abs(dy) < 6) return; // ignore tiny jitters; keep `last` so slow scrolls still add up
+      last = y;
+      setPinned(y > 64);
+      // The pinned bar covers the real header, so the card can come back on any scroll up once the bar is in.
+      setCard(y > 64 && dy < 0);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, [anchor]);
+  return (
+    // Takes no space (h-0); slides in over the list once the real header is gone.
+    <div className="pointer-events-none sticky top-0 z-30 h-0">
+      <div
+        aria-hidden={!pinned}
+        className={cn("relative transition-transform duration-300 ease-out will-change-transform", pinned ? "translate-y-0" : "-translate-y-[120%]")}
+      >
+        <div className="pointer-events-auto relative z-[2] bg-[#CFE8E8] px-4 pb-3 pt-1 text-teal-deep">
+          <RouteTitle />
+        </div>
+        {/* The card hangs under the title bar and slides down from behind it. */}
+        <div
+          className={cn(
+            "absolute inset-x-0 top-full z-[1] bg-[#CFE8E8] px-4 pb-3 shadow-[0_8px_16px_rgba(0,64,69,0.10)] transition-[transform,opacity] duration-300 ease-out will-change-transform",
+            card ? "pointer-events-auto translate-y-0 opacity-100" : "-translate-y-full opacity-0",
+          )}
+        >
+          <DutyCard />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RouteTab() {
+  const root = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={root} className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
+      <PinnedRouteHeader anchor={root} />
       <div className="bg-[#CFE8E8] px-4 pb-8 pt-1 text-teal-deep">
         {/* Title and date on the left; the Requests / Inbox pill centred on both, so it sits a little lower. */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 px-1">
-            <h1 className="text-2xl font-bold leading-tight tracking-tight">{t("Route of the day")}</h1>
-            <p className="nums mt-0.5 text-[15px] font-semibold text-teal-deep/80">{ROUTE_DATE}</p>
-          </div>
-          <HeaderActions />
-        </div>
+        <RouteTitle />
         {/* Oct 26 2026: Home is gone; its duty card (status, progress, next-step button) opens the Route tab. */}
         <div className="mt-3">
           <DutyCard />
@@ -201,7 +267,7 @@ export function MapTab() {
         <span className="min-w-0 truncate text-[15px] font-semibold">
           {(() => {
             if (!s.shiftOn) return "Off duty";
-            if (!s.pickupDone) return s.run > 1 ? "Back to the kitchen" : "At the kitchen";
+            if (!s.pickupDone) return s.run > 1 && !atKitchen(s) ? (toKitchenNow(s) ? "On the way to the kitchen" : "Back to the kitchen") : "At the kitchen";
             if (!next) return "All stops done";
             const st = s.stops[next.id].status;
             return st === "arrived" ? `At ${next.name}` : st === "en_route" ? `On the way to ${next.name}` : `Next: ${next.name}`;

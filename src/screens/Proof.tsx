@@ -7,13 +7,20 @@ import { ActionBar, Button, cn, SlideToConfirm, TopBar } from "../components/ui"
 import { isOn } from "../data/sprints";
 import { JobList, stopJobs } from "./StopDetail";
 
+/** #4 delay presets; the driver can pick several. */
+const DELAY_REASONS = ["Kitchen was late", "Traffic", "Previous stop ran long", "Building access", "Other"];
+
 /**
  * Oct 27 2026: the delivery camera. At a stop with reusables it takes two separate photos in a row, with a progress
  * bar like the stop page's: 1 Food drop-off → 2 Reusables. The step being shot is said in big type at the top, so the
  * driver can see at a glance which photo this is. After the last one it goes to Proof of delivery.
  * Opened with `kind` (from Proof's "Add another"), it takes just that photo and goes back.
  */
-export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
+export function CameraScreen({ id, kind: mode }: { id: string; kind?: PhotoKind | "collect" }) {
+  // Nov 4 2026: "collect" is the reusables pickup's photo step (after the Collect reusables sheet); one photo of what
+  // was collected completes the pickup, like Proof of delivery's camera step.
+  const collect = mode === "collect";
+  const kind = collect ? "reusables" : mode;
   const { s, a } = useApp();
   const stop = findStop(s, id);
   const st = s.stops[id];
@@ -21,12 +28,21 @@ export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
   const [torch, setTorch] = useState(false);
   const two = needsReusablesPhoto(s, stop);
   const [step, setStep] = useState<PhotoKind>(kind ?? (st.photos > 0 && two && !st.reusablePhotos ? "reusables" : "food"));
-  const shots = step === "food" ? st.photos : (st.reusablePhotos ?? 0);
+  const shots = collect ? (st.collectDraft?.photos ?? 0) : step === "food" ? st.photos : (st.reusablePhotos ?? 0);
   const [saved, setSaved] = useState(false); // "Food photo saved" for a moment after moving on to the reusables
 
   const toProof = () => a.jump((p) => ({ stack: [...p.stack.filter((x) => x.name !== "camera"), ...(p.stack.some((x) => x.name === "proof") ? [] : [{ name: "proof" as const, id }])] }));
   const capture = () => {
     setFlash((f) => f + 1);
+    if (collect) {
+      // The photo is the last step of a reusables pickup: it completes the pickup (and the stop) and tells dispatch.
+      const note = st.collectDraft?.note?.trim() || undefined;
+      window.setTimeout(() => {
+        a.collectReusables(id, "collected", 1, note);
+        a.toast("Collected · sent to dispatch");
+      }, 380);
+      return;
+    }
     if (step === "food") a.addPhoto(id);
     else a.updateStop(id, { reusablePhotos: Math.min(3, (st.reusablePhotos ?? 0) + 1) });
     window.setTimeout(() => {
@@ -43,8 +59,9 @@ export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
     { key: "food" as const, label: "Food drop-off", Icon: Package, done: st.photos > 0 },
     { key: "reusables" as const, label: "Reusables", Icon: Recycle, done: (st.reusablePhotos ?? 0) > 0 },
   ];
-  const hint =
-    step === "reusables"
+  const hint = collect
+    ? "Lay everything you collected together, so dispatch can see what came back"
+    : step === "reusables"
       ? "Just the reusables you collected, not the food"
       : stop.customerType === "individual"
         ? "Show the bag and the door number"
@@ -80,13 +97,15 @@ export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
         </div>
         {two && !kind && (
           // Same idea as the stop page's stage track: a line with each photo on it, done ones ticked, this one bright.
-          <div className="mt-3 flex items-center gap-2 px-1" aria-label="Photos at this stop">
+          // Nov 4 2026 (review: "make it more outstanding"): on its own dark glass pill so it reads over any camera
+          // image, bigger icons and labels, this photo in SFK yellow, and a thicker line that fills once photo 1 is done.
+          <div className="mt-3 flex items-center gap-2.5 rounded-full bg-black/55 py-2 pl-2 pr-4 shadow-[0_4px_16px_rgba(0,0,0,0.35)] ring-1 ring-white/10 backdrop-blur-md" aria-label="Photos at this stop">
             {steps.map((x, i) => (
               <Fragment key={x.key}>
-                {i > 0 && <span className={cn("h-0.5 flex-1 rounded-full", steps[0].done ? "bg-[#7fd1cc]" : "bg-white/25")} />}
-                <span className={cn("flex items-center gap-1.5 text-[13px] font-semibold", x.key === step ? "text-white" : x.done ? "text-[#7fd1cc]" : "text-white/50")}>
-                  <span className={cn("grid size-6 place-items-center rounded-full", x.key === step ? "bg-white text-black" : x.done ? "bg-[#7fd1cc] text-black" : "bg-white/20")}>
-                    {x.done && x.key !== step ? <Check className="size-3.5" strokeWidth={3} /> : <x.Icon className="size-3.5" />}
+                {i > 0 && <span className={cn("h-1 flex-1 rounded-full", steps[0].done ? "bg-yellow" : "bg-white/30")} />}
+                <span className={cn("flex items-center gap-2 text-[15px]", x.key === step ? "font-bold text-white" : x.done ? "font-semibold text-yellow" : "font-semibold text-white/75")}>
+                  <span className={cn("grid size-8 place-items-center rounded-full", x.key === step ? "bg-yellow text-teal-deep" : x.done ? "bg-yellow/90 text-teal-deep" : "bg-white/20 text-white")}>
+                    {x.done && x.key !== step ? <Check className="size-[18px]" strokeWidth={3} /> : <x.Icon className="size-[18px]" strokeWidth={2.2} />}
                   </span>
                   {x.label}
                 </span>
@@ -97,7 +116,7 @@ export function CameraScreen({ id, kind }: { id: string; kind?: PhotoKind }) {
         <div className="mt-3 px-1">
           <div className="text-[22px] font-bold leading-tight">
             {two && !kind ? `Photo ${step === "food" ? 1 : 2} of 2 · ` : ""}
-            {step === "food" ? "Food drop-off" : "Reusables"}
+            {collect ? "Reusables collected" : step === "food" ? "Food drop-off" : "Reusables"}
           </div>
           <div className="mt-0.5 text-[15px] text-white/80">{hint}</div>
         </div>
@@ -238,7 +257,13 @@ export function ProofScreen({ id }: { id: string }) {
   const at = s.clock + 8;
   const lateBy = at - stop.windowEnd;
   const needsName = handoff === "handed" && !st.receivedBy?.trim();
-  const needsNote = lateBy > 0 && st.delayReason === "Other" && !st.delayNote?.trim();
+  // Nov 3 2026: delays often have more than one cause, so the reasons are multi-select (kept as "Traffic, Building access").
+  const reasons = st.delayReason ? st.delayReason.split(", ") : [];
+  const toggleReason = (r: string) => {
+    const next = reasons.includes(r) ? reasons.filter((x) => x !== r) : [...reasons, r];
+    a.updateStop(id, { delayReason: next.length ? DELAY_REASONS.filter((x) => next.includes(x)).join(", ") : undefined });
+  };
+  const needsNote = lateBy > 0 && reasons.includes("Other") && !st.delayNote?.trim();
   // Oct 26 2026: reusables to collect at this address (with this delivery, or a pickup riding along) come before
   // completing: the bottom button says "Collect reusables" until each one is marked collected or not collected.
   const toCollect = isOn("reusables")
@@ -268,19 +293,26 @@ export function ProofScreen({ id }: { id: string }) {
               <div className="nums flex items-center gap-2 text-[15px] font-semibold text-warning">
                 <Clock className="size-5" /> Delayed · {lateBy} min past the window
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {["Kitchen was late", "Traffic", "Previous stop ran long", "Building access", "Other"].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => a.updateStop(id, { delayReason: r })}
-                    className={cn("h-10 rounded-full border px-3 text-[13px] font-semibold", st.delayReason === r ? "border-warning bg-card text-warning" : "border-warning-border bg-card/70 text-foreground")}
-                  >
-                    {r}
-                  </button>
-                ))}
+              <p className="mt-1 text-[13px] text-warning">Pick all that apply</p>
+              <div role="group" aria-label="Delay reasons" className="mt-2 flex flex-wrap gap-1.5">
+                {DELAY_REASONS.map((r) => {
+                  const on = reasons.includes(r);
+                  return (
+                    <button
+                      key={r}
+                      role="checkbox"
+                      aria-checked={on}
+                      onClick={() => toggleReason(r)}
+                      className={cn("flex h-10 items-center gap-1 rounded-full border px-3 text-[13px] font-semibold", on ? "border-warning bg-warning text-white" : "border-warning-border bg-card/70 text-foreground")}
+                    >
+                      {/* Nov 4 2026: no tick; the filled chip already shows it's picked. */}
+                      {r}
+                    </button>
+                  );
+                })}
               </div>
               {/* "Other" needs a few words so dispatch knows what held the stop up. */}
-              {st.delayReason === "Other" && (
+              {reasons.includes("Other") && (
                 <textarea
                   value={st.delayNote ?? ""}
                   onChange={(e) => a.updateStop(id, { delayNote: e.target.value })}
@@ -390,7 +422,12 @@ export function HandoffPicker({ id }: { id: string }) {
       {handoff === "handed" && (
         <div className="mt-3">
           <label className="text-overline mb-1.5 block">{t("Who received it?")}</label>
+          {/* Nov 4 2026: focused as soon as the sheet opens (empty only), so the phone's keyboard comes straight up. */}
           <input
+            autoFocus={!st.receivedBy}
+            autoComplete="name"
+            autoCapitalize="words"
+            enterKeyHint="done"
             value={st.receivedBy ?? ""}
             onChange={(e) => a.updateStop(id, { receivedBy: e.target.value })}
             placeholder="Name"
@@ -428,7 +465,7 @@ function PhotoGroup({ id, kind, label }: { id: string; kind: PhotoKind; label?: 
       {label && (
         <div className="mb-2 flex items-center gap-1.5 px-1 text-[15px] font-bold">
           {kind === "food" ? <Package className="size-4 text-teal" /> : <Recycle className="size-4 text-teal" />} {label}
-          {n > 0 && <CheckCircle2 className="ml-auto size-5 text-success" aria-label="Taken" />}
+          {/* Nov 4 2026: no "taken" tick here; the photo itself shows it's taken. */}
         </div>
       )}
       <div className="grid grid-cols-3 gap-2">

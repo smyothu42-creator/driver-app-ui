@@ -4,7 +4,7 @@ import { AppProvider, runStops, useApp, useT, type Tab } from "./store";
 import { PhoneFrame } from "./components/PhoneFrame";
 import { cn, SfkMark } from "./components/ui";
 import { SignIn } from "./screens/Onboarding";
-import { PackageScreen, Pickup } from "./screens/Pickup";
+import { PackageScreen } from "./screens/Pickup";
 import { StopDetail } from "./screens/StopDetail";
 import { Navigate } from "./screens/Navigate";
 import { CameraScreen, ProofScreen } from "./screens/Proof";
@@ -23,6 +23,7 @@ import { CollectScreen } from "./screens/Collect";
 import { ComingSoon } from "./screens/ComingSoon";
 import { AREAS, hiddenArea, isOn, laterFor } from "./data/sprints";
 import { DispatchPage } from "./components/DispatchPage";
+import { DispatchDesk } from "./components/DispatchDesk";
 
 const TABS: { id: Tab; label: string; icon: typeof RouteIcon | typeof SfkMark }[] = [
   { id: "map", label: "Route", icon: RouteIcon },
@@ -94,7 +95,8 @@ function Screens({ full }: { full: boolean }) {
       body = <SignIn />;
       break;
     case "pickup":
-      body = <Pickup id={top.id} />;
+      // Nov 4 2026: the separate "Load stop N" page is gone; anything still pointing here lands on the stop page.
+      body = <StopDetail id={top.id} />;
       break;
     case "kitchen":
       body = <KitchenScreen />;
@@ -177,26 +179,30 @@ function Screens({ full }: { full: boolean }) {
 
   const isTabs = top.name === "tabs";
   const statusTop =
-    top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "schedule" || s.tab === "map") && !hidden ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : (isTabs && s.tab === "history") || top.name === "history" ? "teal" : "light";
+    // Nov 4 2026: Sign in's yellow header runs up behind the status bar.
+    top.name === "signin" ? "yellow" : top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "schedule" || s.tab === "map") && !hidden ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : (isTabs && s.tab === "history") || top.name === "history" ? "teal" : "light";
 
   return (
     <PhoneFrame
       top={statusTop}
       full={full}
       // Navigation is Google Maps: iOS shows "◀ SFK Driver" to switch back to the app (Oct 26 2026: lands on the stop's details page).
-      backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }, { name: "stop", id: top.id }], tab: "map", sheet: null })) } : undefined}
+      // Nov 3 2026: the drive back to the kitchen ("k") isn't a stop, so it lands on Kitchen pickup (was a blank screen).
+      backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }, top.id === "k" ? { name: "kitchen" } : { name: "stop", id: top.id }], tab: "map", sheet: null })) } : undefined}
     >
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
         <OfflineBar />
         <div key={key} onScroll={isTabs ? onScroll : undefined} className={cn("anim-screen relative flex-1", top.name === "navigate" ? "overflow-hidden" : "overflow-y-auto")}>
           {body}
+          {/* Room under the last row so it can scroll clear of the tab bar, which sits over the content. */}
+          {isTabs && <div aria-hidden className={cn("h-[92px]", s.tab === "me" ? "bg-background" : "bg-white")} />}
         </div>
         {isTabs && (
-          // Collapses its height (not just slides) so pinned buttons at the bottom of the screen follow it down.
-          <div className={cn("grid transition-[grid-template-rows] duration-300 ease-out", barHidden ? "grid-rows-[0fr]" : "grid-rows-[1fr]")}>
-            <div className="min-h-0 overflow-hidden">
-              <TabBar />
-            </div>
+          // Nov 4 2026 (review: "lags on a quick scroll"): the tab bar sits over the content and slides away with a
+          // transform, instead of collapsing its height (which re-laid-out the whole list on every frame). The tab
+          // screens have no pinned buttons at the bottom, so nothing needs to follow it down.
+          <div className={cn("absolute inset-x-0 bottom-0 z-30 transition-transform duration-300 ease-out will-change-transform", barHidden && "translate-y-full")}>
+            <TabBar />
           </div>
         )}
       </div>
@@ -230,6 +236,8 @@ export default function App() {
   const [full, setFull] = useState(false);
   // Dispatch page beside the phone (desktop only). Shown once the Schedule sprint is live.
   const [dispatch, setDispatch] = useState(false);
+  // Nov 4 2026: the dispatch board at full screen, for 40+ deliveries and every driver at once.
+  const [desk, setDesk] = useState(false);
   useEffect(() => {
     if (!full) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
@@ -244,11 +252,12 @@ export default function App() {
           <Screens full={full} />
           {dispatch && !full && (
             <div className="max-[960px]:hidden">
-              <DispatchPage onClose={() => setDispatch(false)} />
+              <DispatchPage onClose={() => setDispatch(false)} onExpand={() => setDesk(true)} />
             </div>
           )}
         </div>
       </div>
+      {desk && <DispatchDesk onClose={() => setDesk(false)} />}
       {full ? (
         <button
           onClick={() => setFull(false)}

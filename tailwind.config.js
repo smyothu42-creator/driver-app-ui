@@ -22,7 +22,7 @@ export default {
         control: "#868A88",
       },
       fontFamily: {
-        sans: ['"Hanken Grotesk"', "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+        sans: ['"Inter"', "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
       },
       fontSize: {
         "2xs": ["0.6875rem", "0.9rem"],

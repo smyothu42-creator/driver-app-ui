@@ -84,7 +84,7 @@ function BoardRow({ stop, open, onToggle }: { stop: Stop; open: boolean; onToggl
 }
 
 /** Inline editor under a board row: multi-select for people, then one role dropdown per person. */
-function AssignmentPanel({ stop }: { stop: Stop }) {
+export function AssignmentPanel({ stop }: { stop: Stop }) {
   const { s, a } = useApp();
   const list = s.assignments[stop.id] ?? [];
   const options: DriverOption[] = STAFF.map((m) => ({ ...m, isAvailable: isStaffAvailable(s, m, stop) }));

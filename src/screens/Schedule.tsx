@@ -3,7 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useApp, useT } from "../store";
 import { ROUTE_ISO, SETTINGS, fmtHours, fmtTime, weekdayOf, type DeliveryRequest, type OpenDay } from "../data/route";
 import { addDays, fromISO, toISO } from "../data/availability";
-import { ActionBar, Button, cn, RoleBadge, StatusText, TopBar, WorkTags } from "../components/ui";
+import { AllCaughtUp } from "../components/Illustrations";
+import { ActionBar, Button, cn, RoleBadge, StatusText, TopBar } from "../components/ui";
 
 /* ------------------------------------------------------------------
  * Schedule tab (Sprint 2 · Schedule & assignments, due Tue Oct 20 2026).
@@ -61,6 +62,37 @@ export function rangeLabel(rs: DeliveryRequest[]) {
   return d.length === 0 ? "" : d.length === 1 ? shortDay(d[0]) : `${shortDay(d[0])} – ${shortDay(d[d.length - 1])}`;
 }
 
+/**
+ * A small tile like the Mac / iPhone Calendar app icon (Nov 4 2026): plain white rounded square, the weekday in small SFK coral
+ * text (the brand colour), the day of the month big and light under it. No coloured band.
+ */
+function CalendarTile({ iso }: { iso: string }) {
+  const d = fromISO(iso);
+  return (
+    <span
+      aria-hidden
+      className="flex size-12 shrink-0 flex-col items-center justify-center rounded-[12px] bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.1)]"
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif' }}
+    >
+      <span className="text-[10px] font-semibold leading-none text-coral">{d.toLocaleDateString("en-US", { weekday: "short" })}</span>
+      <span className="mt-0.5 text-[24px] font-light leading-none text-black">{d.getDate()}</span>
+    </span>
+  );
+}
+
+/** Nov 4 2026: empty New requests, with a quiet one-colour illustration instead of a single grey line. */
+function AllAnswered() {
+  return (
+    <div className="flex flex-col items-center px-8 pb-10 pt-8 text-center">
+      <AllCaughtUp className="w-[180px]" />
+      <h3 className="mt-4 text-[20px] font-semibold tracking-tight text-teal-deep">You're all caught up</h3>
+      <p className="mt-1 text-[15px] leading-snug text-muted-foreground">Every request has an answer. New ones from dispatch will show up here.</p>
+    </div>
+  );
+}
+
+/** "Today" / "Tomorrow" alone, otherwise the date ("Wed, Oct 7"): for rows that need to be read at a glance. */
+const glanceDay = (iso: string, label: string) => (iso === ROUTE_ISO ? "Today" : iso === toISO(addDays(fromISO(ROUTE_ISO), 1)) ? "Tomorrow" : label);
 const dayTitle = (iso: string, label: string) => (iso === toISO(addDays(fromISO(ROUTE_ISO), 1)) ? `Tomorrow · ${label}` : label);
 
 export function ScheduleTab() {
@@ -80,7 +112,11 @@ export function ScheduleTab() {
   const dayList = Object.entries(days).sort(([x], [y]) => x.localeCompare(y));
   // Oct 27 2026: two tabs, Your schedules (accepted work) first, then New requests. Opens on Your schedules; the coral
   // count on New requests says when something waits for an answer.
-  const [view, setView] = useState<"requested" | "accepted">("accepted");
+  const [view, setView] = useState<"requested" | "accepted">(s.schedView ?? "accepted");
+  // Nov 4 2026: "Back to requests" on the "Added to your route" sheet lands on New requests.
+  useEffect(() => {
+    if (s.schedView) setView(s.schedView);
+  }, [s.schedView]);
   const fresh = accepted.filter((r) => r.unseen).length; // assignments from dispatch not opened yet
   const TABS = [
     ["accepted", t("Your schedules"), fresh, "bg-teal"],
@@ -126,16 +162,13 @@ export function ScheduleTab() {
         {view === "requested" ? (
           <section>
             {pending.length === 0 ? (
-              <p className="flex items-center gap-2 px-1 text-[15px] text-muted-foreground">
-                <CheckCircle2 className="size-5 shrink-0 text-success" /> All requests answered
-              </p>
+              <AllAnswered />
             ) : (
               <>
                 <AcceptAllBar requests={pending} />
-                <div className="space-y-2.5">
-                  {pending.map((r) => (
-                    <RequestRow key={r.id} r={r} />
-                  ))}
+                {/* Nov 4 2026: full-width rows with hairlines, like Your schedules and the Route list (no boxed cards). */}
+                <div className="-mx-4">
+                  <RequestsByDay requests={pending} />
                 </div>
               </>
             )}
@@ -153,7 +186,12 @@ export function ScheduleTab() {
                   const off = s.availability[iso]?.status === "unavailable" ? s.availability[iso] : null;
                   return (
                     <div key={iso}>
-                      <div className="border-b border-border px-5 pb-2 pt-5 text-[17px] font-bold text-teal-deep">{dayTitle(iso, d.label)}</div>
+                      {/* Nov 4 2026: a bigger day title with a little calendar tile showing the real weekday and date. */}
+                      {/* Nov 4 2026: the day header sits on a soft grey band so each day reads as its own group. */}
+                      <div className="flex items-center gap-3 border-b border-border bg-muted/70 px-5 py-3">
+                        <CalendarTile iso={iso} />
+                        <h3 className="min-w-0 flex-1 text-[20px] font-semibold leading-tight tracking-tight text-teal-deep">{dayTitle(iso, d.label)}</h3>
+                      </div>
                       {off && (
                         <div className="flex min-h-[52px] items-center gap-3 border-b border-border px-5">
                           <span className="w-[72px] shrink-0 whitespace-nowrap text-[15px] font-medium text-muted-foreground">All day</span>
@@ -210,16 +248,17 @@ export function RequestsScreen() {
       <div className="flex-1 overflow-y-auto overflow-x-clip pt-2">
         <div className="relative -mx-px min-h-full w-[calc(100%+2px)] overflow-hidden rounded-t-[28px] border border-b-0 border-border-strong bg-white pb-8">
           {pending.length === 0 ? (
-            <p className="flex items-center gap-2 px-4 py-6 text-[15px] font-medium text-muted-foreground">
-              <CheckCircle2 className="size-5 text-success" /> All requests answered
-            </p>
+            <AllAnswered />
           ) : (
             // Oct 27 2026: the same request cards as Schedule's "Needs your answer" (each card says its day and time).
-            <div className="space-y-2.5 px-4 pt-4">
-              <AcceptAllBar requests={pending} />
-              {pending.map((r) => (
-                <RequestRow key={r.id} r={r} />
-              ))}
+            // Nov 4 2026: the "N to answer · Accept all" band sits flush with the top of the panel.
+            <div>
+              <div className="px-4 [&>div]:border-t-0">
+                <AcceptAllBar requests={pending} />
+              </div>
+              <div>
+                <RequestsByDay requests={pending} />
+              </div>
             </div>
           )}
         </div>
@@ -239,11 +278,12 @@ function AcceptAllBar({ requests }: { requests: DeliveryRequest[] }) {
   return (
     // Oct 27 2026, minimal: how many to answer, and a plain text Accept all (no date range, icon or outline).
     // The sheet it opens still spells out the dates before anything is accepted.
-    <div className="mb-2 flex min-h-11 items-center justify-between gap-3 px-1">
+    // Nov 4 2026: on a soft grey band, full width, like the section headers; the list starts right under it.
+    <div className="-mx-4 flex min-h-12 items-center justify-between gap-3 border-t border-border bg-muted/70 px-5">
       <span className="nums text-[15px] text-muted-foreground">
         {requests.length} {t("to answer")}
       </span>
-      <button onClick={() => a.openSheet({ name: "acceptAll", ids: requests.map((r) => r.id) })} className="-mr-1 flex h-11 items-center px-1 text-[15px] font-semibold text-teal">
+      <button onClick={() => a.openSheet({ name: "acceptAll", ids: requests.map((r) => r.id) })} className="-mr-1 flex h-12 items-center px-1 text-[15px] font-semibold text-teal">
         {t("Accept all")}
       </button>
     </div>
@@ -258,23 +298,33 @@ function UpcomingRow({ r }: { r: DeliveryRequest }) {
   const { a } = useApp();
   const t = useT();
   const cancelled = r.status === "cancelled";
+  // Nov 4 2026 (review: "that page is out of theme"): the same type sizes as the Route list (no picture tile): the name
+  // big, the time on the line under it (no order type, Nov 4 2026), then any status chip.
   return (
-    <button onClick={() => a.push({ name: "request", id: r.id })} className="flex min-h-[52px] w-full items-center gap-3 px-5 text-left">
-      <span className="nums w-[72px] shrink-0 whitespace-nowrap text-[15px] font-medium text-muted-foreground">{fmtTime(r.time)}</span>
-      <span className={cn("min-w-0 flex-1 truncate py-3 text-[15px] font-semibold leading-tight", cancelled && "text-muted-foreground line-through")}>{r.name}</span>
-      {/* The state in words (+ icon), not only the bar colour (accessibility, Oct 22 2026). */}
-      {/* Same status chip as the stop rows and the request page (StatusText). */}
-      {cancelled ? (
-        <StatusText tone="off">{t("Cancelled")}</StatusText>
-      ) : r.unseen ? (
-        // Oct 26 2026: dispatch assigned it and the driver hasn't opened it yet.
-        <StatusText tone="now">{t("New")}</StatusText>
-      ) : r.assigned ? (
-        <StatusText tone="done">{t("Assigned")}</StatusText>
-      ) : r.placeholder ? (
-        <StatusText tone="wait">{t("Usual route")}</StatusText>
-      ) : null /* Oct 27 2026: plain accepted work needs no chip; it's what "Coming up" means. */}
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+    <button onClick={() => a.push({ name: "request", id: r.id })} className="flex w-full items-start gap-3 px-5 py-3.5 text-left active:bg-muted/50">
+      <span className="min-w-0 flex-1">
+        <span className={cn("block truncate text-[17px] font-semibold leading-tight", cancelled && "text-muted-foreground line-through")}>{r.name}</span>
+        <span className="nums mt-1 block truncate text-[15px] font-medium text-muted-foreground">
+          {fmtTime(r.time)}
+        </span>
+        {/* Nov 4 2026: no hot / cold chips on Schedule rows (they're on the request's own page). Only a status chip,
+            when there is one: the state in words, not only colour (accessibility, Oct 22 2026). */}
+        {(cancelled || r.unseen || r.assigned || r.placeholder) && (
+        <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {cancelled ? (
+            <StatusText tone="off">{t("Cancelled")}</StatusText>
+          ) : r.unseen ? (
+            // Oct 26 2026: dispatch assigned it and the driver hasn't opened it yet.
+            <StatusText tone="now">{t("New")}</StatusText>
+          ) : r.assigned ? (
+            <StatusText tone="done">{t("Assigned")}</StatusText>
+          ) : r.placeholder ? (
+            <StatusText tone="wait">{t("Usual route")}</StatusText>
+          ) : null}
+        </span>
+        )}
+      </span>
+      <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground/60" />
     </button>
   );
 }
@@ -284,37 +334,59 @@ function UpcomingRow({ r }: { r: DeliveryRequest }) {
  * (review Oct 22 2026), not behind a tap. Tap the name for the full details.
  * Under 48 h and outside open hours are said in words under the name.
  */
+/**
+ * Nov 4 2026 (review: "match the theme"): requests grouped by day under the same grey day header with the calendar tile
+ * as Your schedules (a multi-day order sits under its first day).
+ */
+function RequestsByDay({ requests }: { requests: DeliveryRequest[] }) {
+  // Nov 4 2026 (review: "too complex and hard to scan"): no day header per request any more; one flat list with
+  // hairlines, each row saying its own day.
+  return (
+    <div className="divide-y divide-border border-y border-border">
+      {requests.map((r) => (
+        <RequestRow key={r.id} r={r} />
+      ))}
+    </div>
+  );
+}
+
 function RequestRow({ r }: { r: DeliveryRequest }) {
   const { s, a } = useApp();
   const t = useT();
   const urgent = hoursUntil(r, s.clock) <= SETTINGS.requestFlagHours;
   const outside = daysOf(r).some(([iso]) => !inHours(s.openHours, iso, r.time));
-  // Oct 27 2026: one calm card per request: who, when, the deadline (amber only when close), then Accept / Can't do it.
+  // Oct 27 2026: who, when, the deadline (amber only when close), then Accept / Can't do it.
+  // Nov 4 2026 (review: "that page is out of theme"): a full-width row like the Route list (name, time line)
+  // instead of a boxed card; the two buttons sit under the text.
   return (
-    <div className="rounded-2xl border border-border-strong bg-white p-4 shadow-card">
+    <div className="px-5 py-4">
       <button onClick={() => a.push({ name: "request", id: r.id })} className="flex w-full items-start gap-3 text-left">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[17px] font-semibold leading-snug">{r.name}</span>
-          <span className="nums mt-0.5 block truncate text-[15px] text-foreground/80">
-            {dayTitle(r.dateISO, r.dateLabel)} · {fmtTime(r.time)}
+          <span className="block truncate text-[20px] font-semibold leading-tight tracking-tight">{r.name}</span>
+          {/* Nov 4 2026 (review: "easier to scan"): short day (just "Tomorrow" / "Today", or "Wed, Oct 7"), in teal, then
+              the time; no repeated date. */}
+          <span className="nums mt-1 block truncate text-[15px] text-muted-foreground">
+            <b className="font-semibold text-teal-deep">{glanceDay(r.dateISO, r.dateLabel)}</b> · ~{fmtTime(r.time)}
             {r.days && ` · ${r.days.length} days`}
           </span>
-          <span className={cn("nums mt-1 flex items-center gap-1 text-[13px]", urgent || outside ? "font-semibold text-warning" : "text-muted-foreground")}>
-            {(urgent || outside) && <AlertTriangle className="size-3.5 shrink-0" />}
-            <span className="truncate">
-              {t("Respond by")} {respondBy(r)}
-              {outside && ` · ${t("Outside your availability")}`}
+          {/* Only when it needs attention: the deadline is close, or it's outside the driver's hours. */}
+          {(urgent || outside) && (
+            <span className="nums mt-1 flex items-center gap-1 text-[13px] font-semibold text-warning">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              <span className="truncate">{urgent ? `${t("Respond by")} ${respondBy(r)}` : t("Outside your availability")}</span>
             </span>
-          </span>
+          )}
         </span>
-        <ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground" />
+        <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground/60" />
       </button>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button size="md" className="whitespace-nowrap" onClick={() => a.answerRequest(r.id, "accepted")}>
-          {r.days ? `Accept ${r.days.length} days` : t("Accept")}
-        </Button>
-        <Button size="md" variant="outline" className="whitespace-nowrap" onClick={() => a.openSheet({ name: "decline", id: r.id })}>
+      {/* Same order as the request page: Can't do it on the left, Accept on the right; a little lighter (44px) so a
+          list of them doesn't read as a wall of big buttons. */}
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        <Button size="md" variant="outline" className="h-10 whitespace-nowrap" onClick={() => a.openSheet({ name: "decline", id: r.id })}>
           {t("Can't do it")}
+        </Button>
+        <Button size="md" className="h-10 whitespace-nowrap" onClick={() => a.answerRequest(r.id, "accepted")}>
+          {r.days ? `Accept ${r.days.length} days` : t("Accept")}
         </Button>
       </div>
     </div>
@@ -369,8 +441,14 @@ export function RequestDetail({ id }: { id: string }) {
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white">
         <div className="px-5 pb-5 pt-3">
-          <RequestStatus r={r} />
-          <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight">{r.name}</h1>
+          {/* Nov 4 2026 (review: "match the theme"): laid out like the stop page: name, time in teal, address, then a
+              grey band and quiet icon rows. A waiting request needs no status pill (the title says it); answered ones keep it. */}
+          {!pending && (
+            <div className="mb-2">
+              <RequestStatus r={r} />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold leading-tight tracking-tight">{r.name}</h1>
           <p className="nums mt-1 flex items-center gap-1.5 text-[17px] font-semibold text-teal-deep">
             <Clock className="size-4" />
             {r.days ? `${r.days.length} days` : dayTitle(r.dateISO, r.dateLabel)} · ~{fmtTime(r.time)}
@@ -381,29 +459,22 @@ export function RequestDetail({ id }: { id: string }) {
             {r.type} · {r.orderNo}
           </p>
           {r.status === "declined" && r.reason && <p className="mt-1.5 text-[15px] text-muted-foreground">You said: {r.reason}</p>}
-          {(r.work.length > 0 || r.role) && (
-            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <WorkTags work={r.work} variant="plain" />
-              {r.role && (
-                <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-                  Your role <RoleBadge role={r.role} />
-                </span>
-              )}
-            </div>
+          {/* No hot / cold chip here (as on Schedule). The deadline is one amber line, not a box. */}
+          {urgent && (
+            <p className="nums mt-3 flex items-center gap-1.5 text-[15px] font-semibold text-warning">
+              <AlertTriangle className="size-4 shrink-0" /> {t("Respond by")} {respondBy(r)}
+            </p>
+          )}
+          {r.role && (
+            <span className="mt-3 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+              Your role <RoleBadge role={r.role} />
+            </span>
           )}
         </div>
 
         {/* Anything that needs attention, under who and when (same place as a stop's dispatch changes). */}
-        {(urgent || cancelled || r.assigned || r.placeholder) && (
+        {(cancelled || r.assigned || r.placeholder) && (
           <div className="space-y-3 px-5 pb-5">
-            {urgent && (
-              <div className="flex gap-3 rounded-2xl border border-warning-border bg-warning-bg p-4 text-warning">
-                <AlertTriangle className="mt-0.5 size-5 shrink-0" />
-                <span className="text-[15px]">
-                  <b className="font-bold">{t("Respond by")} {respondBy(r)}.</b>
-                </span>
-              </div>
-            )}
             {cancelled && (
               <div className="flex gap-3 rounded-2xl border-2 border-danger-border bg-danger-bg p-4 text-danger">
                 <Ban className="mt-0.5 size-5 shrink-0" />
@@ -429,9 +500,12 @@ export function RequestDetail({ id }: { id: string }) {
         )}
 
         {/* When: one quiet row per day, each checked against the open hours for that day, then the rough time. */}
-        <ol className="divide-y divide-border border-t border-border/60 pb-2">
+        {/* The same soft 8px band as the stop page between who/where and the rows. */}
+        <ol className="divide-y divide-border border-t-8 border-muted">
           {days.map(([iso, label]) => {
             const fits = inHours(s.openHours, iso, r.time);
+            // One day that fits your hours is already said at the top; only multi-day orders or a clash get a row.
+            if (!r.days && fits) return null;
             return (
               <Row key={iso} icon={<CalendarDays />} label={dayTitle(iso, label)} right={<span className="nums shrink-0 text-[15px] font-bold text-foreground">~{fmtTime(r.time)}</span>}>
                 {/* Only flag a problem; a day inside your open hours needs no line. */}
@@ -444,7 +518,7 @@ export function RequestDetail({ id }: { id: string }) {
               </Row>
             );
           })}
-          <Row icon={<Clock />} label="Rough time" right={r.days && <span className="truncate text-2xs text-muted-foreground">One answer for all {r.days.length} days</span>}>
+          <Row icon={<Clock />} label="Rough time" right={r.days ? <span className="truncate text-2xs text-muted-foreground">One answer for all {r.days.length} days</span> : undefined}>
             The exact window comes with your route on the day.
           </Row>
           {/* Oct 27 2026: not ready to answer? One tap for a reminder in an hour, by push. */}
@@ -466,16 +540,21 @@ export function RequestDetail({ id }: { id: string }) {
             </Row>
           )}
         </ol>
+        {/* Nov 4 2026: a hairline after the last row too, so the list ends cleanly (as on the stop page). */}
+        <div className="border-t border-border" />
       </div>
 
       {pending ? (
         <ActionBar>
-          <Button size="lg" className="w-full" onClick={() => a.answerRequest(id, "accepted")}>
-            <CalendarCheck /> {r.days ? `Accept all ${r.days.length} days` : t("Accept")}
-          </Button>
-          <Button size="md" variant="ghost" className="w-full" onClick={() => a.openSheet({ name: "decline", id })}>
-            {t("Can't do it")}
-          </Button>
+          {/* Nov 4 2026: Accept and Can't do it side by side, the same size. */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button size="lg" variant="outline" className="w-full min-w-0 px-3" onClick={() => a.openSheet({ name: "decline", id })}>
+              {t("Can't do it")}
+            </Button>
+            <Button size="lg" className="w-full min-w-0 px-3" onClick={() => a.answerRequest(id, "accepted")}>
+              <CalendarCheck /> <span className="truncate">{r.days ? `Accept ${r.days.length} days` : t("Accept")}</span>
+            </Button>
+          </div>
         </ActionBar>
       ) : (
         // Oct 27 2026: no "Back to schedule" button; the top bar's back does that. Only the hint stays, for accepted work.

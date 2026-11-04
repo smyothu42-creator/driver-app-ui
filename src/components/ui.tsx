@@ -177,7 +177,7 @@ const WORK: Record<Work, { label: string; Icon: typeof Flame; cls: string; ink: 
  * small teal chip with a verb (Oct 26 2026). Reusable packaging isn't a tag at all; it's on the order details.
  */
 /** `short`: "Collect" instead of "Collect reusables", for narrow rows (Route tab). */
-export function WorkTags({ stop, work, className, variant = "pill", onDark, strong, short }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean; short?: boolean }) {
+export function WorkTags({ stop, work, className, variant = "pill", onDark, strong, short, chips = true }: { stop?: Stop; work?: Work[]; className?: string; variant?: "pill" | "plain"; onDark?: boolean; strong?: boolean; short?: boolean; chips?: boolean | "compact" }) {
   // A request (Schedule) passes its work list directly; a stop derives it.
   const list = work ?? (stop ? workOf(stop) : []);
   // On a dark (Superfine green) surface the icons use light tints so they keep contrast.
@@ -188,9 +188,10 @@ export function WorkTags({ stop, work, className, variant = "pill", onDark, stro
         {list.map((w) => {
           const { label, Icon, ink } = WORK[w];
           // Oct 26 2026: hot / cold get a soft tinted background too, the same chip as Collect (light surfaces only).
-          if (!onDark)
+          // Nov 4 2026: chips="compact" is a shorter chip for dense lists like the route timeline; chips={false} drops the fill.
+          if (!onDark && chips)
             return (
-              <span key={w} className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-semibold", w === "hot" ? "bg-coral-soft text-coral-deep" : w === "cold" ? "bg-info-bg text-info" : "bg-teal-wash text-teal-deep")}>
+              <span key={w} className={cn("inline-flex items-center gap-1 rounded-full px-2 text-[13px] font-semibold", chips === "compact" ? "py-px leading-[18px]" : "py-0.5", w === "hot" ? "bg-coral-soft text-coral-deep" : w === "cold" ? "bg-info-bg text-info" : "bg-teal-wash text-teal-deep")}>
                 <Icon className={cn("size-3.5", w === "reusables" ? "text-teal" : ink)} strokeWidth={w === "reusables" ? 2.4 : 2.2} />
                 {short && w === "reusables" ? "Collect" : label}
               </span>

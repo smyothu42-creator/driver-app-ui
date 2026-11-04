@@ -355,3 +355,39 @@ export function KitchenPickupScene({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/**
+ * Nov 4 2026: empty state for "no requests to answer": a calendar page with a big tick, a few sparkles. Monochrome,
+ * one SFK teal at a few strengths (deep lines, soft fills), so it sits quietly on the white panel.
+ */
+export function AllCaughtUp({ className }: { className?: string }) {
+  const ink = "#004045"; // teal-deep
+  const soft = "#DCEDED"; // teal-soft
+  const wash = "#EFF6F5"; // teal-wash
+  return (
+    <svg viewBox="0 0 200 160" className={cn("block", className)} aria-hidden fill="none" strokeLinecap="round" strokeLinejoin="round">
+      {/* soft ground */}
+      <ellipse cx="100" cy="146" rx="70" ry="8" fill={wash} />
+      {/* calendar page behind */}
+      <rect x="62" y="30" width="92" height="98" rx="14" fill={wash} stroke={ink} strokeOpacity="0.25" strokeWidth="2.5" transform="rotate(8 108 79)" />
+      {/* calendar page */}
+      <rect x="48" y="26" width="96" height="104" rx="14" fill="#fff" stroke={ink} strokeWidth="3" />
+      <path d="M48 52h96" stroke={ink} strokeWidth="3" />
+      <path d="M48 40c0-7.7 6.3-14 14-14h68c7.7 0 14 6.3 14 14v12H48V40Z" fill={soft} />
+      <path d="M48 52h96" stroke={ink} strokeWidth="3" />
+      <rect x="48" y="26" width="96" height="104" rx="14" stroke={ink} strokeWidth="3" />
+      {/* rings */}
+      <path d="M72 18v16M120 18v16" stroke={ink} strokeWidth="5" />
+      {/* faint day grid */}
+      {[0, 1, 2, 3].map((c) => [0, 1].map((r) => <circle key={`${c}${r}`} cx={66 + c * 20} cy={66 + r * 16} r="3" fill={ink} fillOpacity="0.14" />))}
+      {/* the tick */}
+      <circle cx="96" cy="100" r="20" fill={soft} />
+      <path d="m86 100 7 7 13-14" stroke={ink} strokeWidth="5" />
+      {/* sparkles */}
+      <path d="M164 40v12M158 46h12" stroke={ink} strokeWidth="3" />
+      <path d="M30 72v9M25.5 76.5h9" stroke={ink} strokeOpacity="0.5" strokeWidth="2.5" />
+      <circle cx="160" cy="92" r="3.5" fill={ink} fillOpacity="0.35" />
+      <circle cx="36" cy="110" r="2.5" fill={ink} fillOpacity="0.25" />
+    </svg>
+  );
+}

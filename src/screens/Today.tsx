@@ -1,13 +1,13 @@
 import { Fragment, type ReactNode } from "react";
-import { CalendarClock, Car, Check, ChevronRight, ClipboardList, Clock, FileText, MessageSquare, Navigation, ScanLine } from "lucide-react";
+import { CalendarClock, Check, ChevronRight, ClipboardList, Clock, FileText, MessageSquare, Navigation, ScanLine } from "lucide-react";
 import { isOn, laterFor } from "../data/sprints";
-import { type State, isLoaded, liveRoute, slipsToday, myAssignment, needsKitchenRun, runStops, useApp, nextStop, pickupDelivery, pickupsAt, useRoute, useT } from "../store";
+import { type State, atKitchen, toKitchenNow, isLoaded, liveRoute, slipsToday, myAssignment, needsKitchenRun, runStops, useApp, nextStop, pickupDelivery, pickupsAt, useRoute, useT } from "../store";
 import { KITCHEN, KITCHEN_READY, DRIVER, driveBetween, fmtTime, fmtWindow, runOf, windowStatus, workOf, type Stop } from "../data/route";
 import { ActionBar, Button, cn, SlideToConfirm, STATUS_META, StopAvatar, TopBar, WorkTags, SfkMark } from "../components/ui";
 import { checkedCount, orderSize } from "./Pickup";
 import driverPhoto from "../assets/driver-photo.jpg";
 import { StageTrack } from "./StopDetail";
-import { IdentificationBadge, MapPin as MapPinFill, Package as PackageFill, QrCode, Truck as TruckFill } from "@phosphor-icons/react";
+import { type Icon, Clock as Clock3Fill, IdentificationBadge, MapPin as MapPinFill, Package as PackageFill, QrCode, Truck as TruckFill } from "@phosphor-icons/react";
 
 /**
  * Today: one clear "next step", then the route. (The Pick up → Deliver → Confirm track is hidden here for now.)
@@ -33,7 +33,8 @@ export function DutyCard() {
     <div className="rounded-2xl border border-border bg-card p-3">
       {/* One row: duty status on the left, day progress (count + bar) on the right. */}
       <div className="flex items-center gap-3 px-1">
-        <button onClick={() => a.push({ name: "tracking" })} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left">
+        {/* Nov 4 2026: tapping the driver opens their profile (Me), not the Location sharing page. */}
+        <button onClick={() => a.setTab("me")} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left">
           {/* Driver photo with a status dot: green + pulse while on duty, grey when off. */}
           <span className="relative size-9 shrink-0">
             <img src={s.profilePhoto ?? driverPhoto} alt={DRIVER.name} className="size-9 rounded-full object-cover" />
@@ -43,8 +44,9 @@ export function DutyCard() {
             </span>
           </span>
           <span className="min-w-0">
-            <span className="block text-[17px] font-semibold leading-tight">{s.shiftOn ? t("On duty") : t("Off duty")}</span>
-            <span className="block truncate text-[13px] text-muted-foreground">{s.shiftOn ? t("Location on") : t("Location off")}</span>
+            {/* Nov 4 2026: the driver's name on top, duty status under it (location is shared only while on duty). */}
+            <span className="block truncate text-[17px] font-semibold leading-tight">{DRIVER.name}</span>
+            <span className={cn("block truncate text-[13px]", s.shiftOn ? "font-semibold text-success" : "text-muted-foreground")}>{s.shiftOn ? t("On duty") : t("Off duty")}</span>
           </span>
         </button>
         {/* Sized to the text, so the progress bar is exactly as wide as the label above it. */}
@@ -58,23 +60,34 @@ export function DutyCard() {
           </div>
         </div>
       </div>
-      {/* The next step, one button. */}
+      {/* The next step, one button. Nov 4 2026: all three (Go on duty, Kitchen pickup, Next) are the same 48px / 17px. */}
       {!s.shiftOn ? (
-        <button onClick={() => a.openSheet({ name: "startShift" })} className="hero-yellow mt-3 h-12 w-full rounded-full text-[17px] font-semibold text-teal-deep transition active:scale-[0.98]">
+        <button onClick={() => a.openSheet({ name: "startShift" })} className="btn-yellow mt-3 h-12 w-full rounded-full text-[17px] font-bold text-teal-deep transition active:scale-[0.98]">
           {t("Go on duty")}
         </button>
       ) : !s.pickupDone ? (
-        <Button size="md" className="mt-3 w-full gap-1.5" onClick={() => a.push({ name: "kitchen" })}>
+        <Button size="md" className="mt-3 h-12 w-full gap-1.5 text-[17px]" onClick={() => a.push({ name: "kitchen" })}>
           <SfkMark className="size-5" /> {t("Kitchen pickup")} <ChevronRight />
         </Button>
       ) : next ? (
-        <Button size="md" className="mt-3 w-full min-w-0 gap-1.5" onClick={() => a.push({ name: "stop", id: next.id })}>
+        <Button size="md" className="mt-3 h-12 w-full min-w-0 gap-1.5 text-[17px]" onClick={() => a.push({ name: "stop", id: next.id })}>
           <span className="truncate">
             {needsKitchenRun(s, next.id) ? t("Back to kitchen to load") : `${t("Next")}: ${next.name}`}
           </span>
           <ChevronRight className="shrink-0" />
         </Button>
-      ) : null}
+      ) : (
+        // Nov 4 2026: every stop done: see what's next on Schedule, or end the duty (goes off duty, then opens Me).
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button size="md" variant="outline" className="h-12 min-w-0 px-3 text-[17px]" onClick={() => a.setTab("schedule")}>
+            {t("Schedule")}
+          </Button>
+          {/* Ends the duty straight away (location sharing stops), then shows the profile. */}
+          <Button size="md" className="h-12 min-w-0 px-3 text-[17px]" onClick={() => (a.endShift(), a.setTab("me"))}>
+            {t("End duty")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -91,22 +104,45 @@ export function HeaderActions() {
     <>
     {/* Requests (#18) and Inbox (#6) in one white pill, like an iOS toolbar group (Oct 22 2026; on the Route tab since Oct 26): two icons, a hairline
         between them, each keeping its own count. Oct 26 2026: the requests half stays put with nothing waiting, it just loses its count. */}
-    <div className="flex h-10 items-center rounded-full bg-white text-teal-deep">
+    {/* Nov 4 2026: a little bigger (48px tall, 22px icons) so both are easier to see and tap. */}
+    <div className="flex h-12 items-center rounded-full bg-white text-teal-deep">
       {requests && (
         <>
-          <button onClick={() => a.push({ name: "requests" })} aria-label={pending ? `${pending} ${pending === 1 ? t("request needs your answer") : t("requests need your answer")}` : t("Requests")} className="relative grid h-10 w-11 place-items-center rounded-l-full active:bg-muted">
-            <CalendarClock className="size-[18px]" />
-            {pending > 0 && <span className="nums absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-coral px-1 text-[10px] font-bold text-white">{pending}</span>}
+          <button onClick={() => a.push({ name: "requests" })} aria-label={pending ? `${pending} ${pending === 1 ? t("request needs your answer") : t("requests need your answer")}` : t("Requests")} className="relative grid h-12 w-[52px] place-items-center rounded-l-full active:bg-muted">
+            <CalendarClock className="size-[22px]" />
+            {pending > 0 && <span className="nums absolute right-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{pending}</span>}
           </button>
-          <span aria-hidden className="h-5 w-px bg-border-strong" />
+          <span aria-hidden className="h-6 w-px bg-border-strong" />
         </>
       )}
-      <button onClick={() => a.push({ name: "inbox" })} aria-label={`${t("Inbox")}, ${fromDispatch} messages`} className={cn("relative grid h-10 w-11 place-items-center active:bg-muted", requests ? "rounded-r-full" : "rounded-full")}>
-        <MessageSquare className="size-[18px]" />
-        {fromDispatch > 0 && isOn("notifications") && <span className="nums absolute right-0.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-coral px-1 text-[10px] font-bold text-white">{fromDispatch}</span>}
+      <button onClick={() => a.push({ name: "inbox" })} aria-label={`${t("Inbox")}, ${fromDispatch} messages`} className={cn("relative grid h-12 w-[52px] place-items-center active:bg-muted", requests ? "rounded-r-full" : "rounded-full")}>
+        <MessageSquare className="size-[22px]" />
+        {fromDispatch > 0 && isOn("notifications") && <span className="nums absolute right-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{fromDispatch}</span>}
       </button>
     </div>
     </>
+  );
+}
+
+/** A kitchen pickup's section head, styled like the stop page's stages: grey band above, big icon, title, status. */
+function PickupSection({ icon: I, title, status, sub, first }: { icon: Icon; title: string; status: string; sub?: string; first?: boolean }) {
+  return (
+    // Nov 4 2026: on a soft grey band, like the stop page's stage headers and Schedule's day headers.
+    <div className={cn("-mx-5 bg-muted/70 px-5 py-3.5", first && "mt-7")}>
+      <div className="flex items-center gap-3">
+        <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-white text-teal-deep shadow-[0_0_0_1px_rgba(0,0,0,0.05)]">
+          <I weight="fill" className="size-[28px]" />
+        </span>
+        {/* The icon is centred on the title and the line under it together. */}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <h2 className="min-w-0 flex-1 text-[20px] font-semibold leading-snug tracking-tight">{title}</h2>
+            <span className="nums shrink-0 text-[15px] text-muted-foreground">{status}</span>
+          </span>
+          {sub && <span className="nums mt-0.5 block text-[15px] text-muted-foreground">{sub}</span>}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -128,7 +164,7 @@ export function kitchenStages(s: State, t: (k: string) => string) {
   const loadedAll = route.every((x) => checkedCount(s, x) === x.bags.length);
   return [
     s.run > 1
-      ? { key: "go", label: t("Go to kitchen"), icon: MapPinFill, done: route.some((x) => s.scanned[x.id]) }
+      ? { key: "go", label: t("Go to kitchen"), icon: MapPinFill, done: atKitchen(s) }
       : { key: "duty", label: t("On duty"), icon: IdentificationBadge, done: s.shiftOn },
     { key: "scan", label: t("Scan slips"), icon: QrCode, done: scannedAll },
     { key: "load", label: t("Load"), icon: PackageFill, done: loadedAll },
@@ -153,55 +189,57 @@ export function KitchenScreen() {
   return (
     <div className="flex h-full flex-col bg-card">
       <TopBar title={`${t("Kitchen pickup")}${s.run > 1 ? ` ${s.run}` : ""}`} onBack={a.back} tone="white" />
-      <div className="flex-1 overflow-y-auto px-5 pb-5 pt-2">
-        <div className="mb-4">
-          <StageTrack stages={stages} />
-        </div>
-        <div className="flex items-center gap-3">
-          <KitchenAvatar className="size-11" />
-          <span className="min-w-0 flex-1 truncate text-xl font-semibold leading-tight tracking-tight">{KITCHEN.name}</span>
-          {/* A countdown ("Dispatch ready in 12 min"), not a clock time; "Dispatch ready · Now" once it's time. */}
-          <span className="shrink-0 text-right">
-            <span className="flex items-center justify-end gap-1 text-[13px] font-medium text-muted-foreground">
-              <Clock className="size-3.5 shrink-0" aria-hidden />
-              {readyIn > 0 ? t("Dispatch ready in") : t("Dispatch ready")}
+      {/* Nov 4 2026 (review: "more spacing and clean this page"): the kitchen gets its full name on its own line, the
+          ready time and the instructions sit in one soft card, and each pickup is a titled, rounded list with room
+          around it instead of grey full-width bands. */}
+      {/* Nov 4 2026: the track stays put above the scroll, like the stop page's, so it never scrolls away. */}
+      <div className="relative z-10 shrink-0 border-b border-border/60 bg-white px-5 pb-4 pt-2">
+        <StageTrack stages={stages} />
+      </div>
+      <div className="flex-1 overflow-y-auto px-5 pb-8 pt-6">
+        <div className="flex items-start gap-3.5">
+          <KitchenAvatar className="size-12" />
+          <span className="min-w-0 flex-1 pt-0.5">
+            <span className="block text-xl font-semibold leading-tight tracking-tight">{KITCHEN.name}</span>
+            <span className="mt-1 block text-[13px] leading-snug text-muted-foreground">
+              {KITCHEN.addressLine1}, {KITCHEN.city}
             </span>
-            <span className="nums block whitespace-nowrap text-[17px] font-semibold leading-tight text-foreground">{readyIn > 0 ? `${readyIn} min` : t("Now")}</span>
           </span>
         </div>
-        <p className="mt-1.5 text-[13px] leading-snug text-muted-foreground">
-          {KITCHEN.addressLine1}
-          <br />
-          {KITCHEN.city}
-        </p>
-        {/* Superfine has no dock; drivers park and walk up. Superfine's static PDF says how to reach the suite. */}
-        <a
-          href={KITCHEN.instructionsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="-ml-1 mb-3 mt-1 flex min-h-[44px] w-fit items-center gap-1.5 px-1 text-[15px] font-semibold text-teal-deep underline-offset-2 active:underline"
-        >
-          <FileText className="size-4 shrink-0" aria-hidden />
-          {t("Driver instructions")}
-        </a>
-        {/* What's waiting at the kitchen: one row per order. Tap for what's in it (same screen as scanning its slip). */}
-        <div className="-mx-5 border-y border-border bg-muted/60 px-5 py-2.5 text-[17px] font-bold text-teal-deep">
-          {route.length} {route.length === 1 ? t("order to pick up") : t("orders to pick up")}
+
+        <div className="mt-5 divide-y divide-border rounded-2xl bg-muted/70">
+          {/* A countdown ("Dispatch ready in 12 min"), not a clock time; "Dispatch ready · Now" once it's time. */}
+          <div className="flex items-center gap-3 px-4 py-3.5">
+            <Clock className="size-5 shrink-0 text-teal" aria-hidden />
+            <span className="flex-1 text-[15px] text-muted-foreground">{readyIn > 0 ? t("Dispatch ready in") : t("Dispatch ready")}</span>
+            <span className="nums whitespace-nowrap text-[17px] font-semibold text-foreground">{readyIn > 0 ? `${readyIn} min` : t("Now")}</span>
+          </div>
+          {/* Superfine has no dock; drivers park and walk up. Superfine's static PDF says how to reach the suite. */}
+          <a href={KITCHEN.instructionsUrl} target="_blank" rel="noreferrer" className="flex min-h-[52px] items-center gap-3 px-4 text-[15px] font-semibold text-teal-deep active:bg-black/5">
+            <FileText className="size-5 shrink-0 text-teal" aria-hidden />
+            <span className="flex-1">{t("Driver instructions")}</span>
+            <ChevronRight className="size-4 text-muted-foreground/60" />
+          </a>
         </div>
-        <ul className="-mx-5 divide-y divide-border border-b border-border bg-white">
+
+        {/* What's waiting at the kitchen: one row per order. Tap for what's in it (same screen as scanning its slip). */}
+        {/* Nov 4 2026 (review: "out of theme too"): each pickup is a page section like the stop page's stages: the grey
+            band above, a big icon, title and status, then its orders as edge-to-edge rows with hairlines (no boxed card). */}
+        <PickupSection first icon={PackageFill} title={`${route.length} ${route.length === 1 ? t("order to pick up") : t("orders to pick up")}`} status={`${route.filter((x) => checkedCount(s, x) === x.bags.length).length} of ${route.length} ${t("loaded")}`} />
+        <ul className="-mx-5 divide-y divide-border border-y border-border bg-white">
           {route.map((x) => {
             const done = checkedCount(s, x);
             const all = done === x.bags.length;
             return (
               <li key={x.id}>
-                <button onClick={() => a.push({ name: "package", id: x.id })} disabled={!s.shiftOn} className="flex min-h-[64px] w-full items-center gap-3 px-5 py-2.5 text-left active:bg-muted/60">
-                  <StopAvatar stop={x} square className="size-9 shrink-0" />
+                <button onClick={() => a.push({ name: "package", id: x.id })} disabled={!s.shiftOn} className="flex min-h-[68px] w-full items-center gap-3 px-5 py-3 text-left active:bg-muted/60">
+                  <StopAvatar stop={x} square className="size-12 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{x.name}</span>
-                    <span className="nums block truncate text-[13px] text-muted-foreground">{orderSize(x)}</span>
+                    <span className="block truncate text-[17px] font-semibold">{x.name}</span>
+                    <span className="nums mt-0.5 block truncate text-[15px] text-muted-foreground">{orderSize(x)}</span>
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
-                    <span className={cn("nums flex items-center gap-1 text-[13px] font-medium", all ? "font-semibold text-success" : s.scanned[x.id] ? "font-semibold text-teal-deep" : "text-muted-foreground")}>
+                    <span className={cn("nums flex items-center gap-1 text-[15px] font-medium", all ? "font-semibold text-success" : s.scanned[x.id] ? "font-semibold text-teal-deep" : "text-muted-foreground")}>
                       {all ? (
                         <>
                           <Check className="size-4" strokeWidth={3} /> {t("Loaded")}
@@ -225,24 +263,17 @@ export function KitchenScreen() {
           const ready = fmtTime(KITCHEN_READY[r] ?? KITCHEN.readyAt);
           return (
             <Fragment key={r}>
-              <div className="nums -mx-5 border-b border-border bg-muted/60 px-5 py-2.5 text-[17px] font-bold text-teal-deep">
-                {t("Kitchen pickup")} {r} · {t("Dispatch ready")} {ready} · {rows.length} {rows.length === 1 ? t("order") : t("orders")}
-              </div>
-              <ul className="-mx-5 divide-y divide-border border-b border-border bg-white">
+              <PickupSection icon={Clock3Fill} title={`${t("Kitchen pickup")} ${r}`} status="" sub={`${t("Dispatch ready")} ${ready}`} />
+              <ul className="-mx-5 divide-y divide-border border-y border-border bg-white">
                 {rows.map((x) => (
                   <li key={x.id}>
-                    <button onClick={() => a.openSheet({ name: "laterPickup", id: x.id })} className="flex min-h-[64px] w-full items-center gap-3 px-5 py-2.5 text-left active:bg-muted/60">
-                      <StopAvatar stop={x} square className="size-9 shrink-0" />
+                    <button onClick={() => a.openSheet({ name: "laterPickup", id: x.id })} className="flex min-h-[68px] w-full items-center gap-3 px-5 py-3 text-left active:bg-muted/60">
+                      <StopAvatar stop={x} square className="size-12 shrink-0" />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[15px] font-semibold">{x.name}</span>
-                        <span className="nums block truncate text-[13px] text-muted-foreground">{orderSize(x)}</span>
+                        <span className="block truncate text-[17px] font-semibold">{x.name}</span>
+                        <span className="nums mt-0.5 block truncate text-[15px] text-muted-foreground">{orderSize(x)}</span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-1.5">
-                        <span className="nums flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
-                          <Clock className="size-3.5" /> {ready}
-                        </span>
-                        <ChevronRight className="size-4 text-muted-foreground/60" />
-                      </span>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
                     </button>
                   </li>
                 ))}
@@ -255,18 +286,20 @@ export function KitchenScreen() {
           loaded, then slide to start the route. Off duty, go on duty first. */}
       <ActionBar>
         {!s.shiftOn ? (
-          <button onClick={() => a.openSheet({ name: "startShift" })} className="hero-yellow h-14 w-full rounded-full text-[17px] font-semibold text-teal-deep transition active:scale-[0.98]">
+          <button onClick={() => a.openSheet({ name: "startShift" })} className="btn-yellow h-14 w-full rounded-full text-[17px] font-bold text-teal-deep transition active:scale-[0.98]">
             {t("Go on duty")}
           </button>
-        ) : s.run > 1 && !route.some((x) => s.scanned[x.id]) ? (
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={() => {
-              a.toast("Opening Google Maps…");
-              a.push({ name: "navigate", id: "k" });
-            }}
-          >
+        ) : !atKitchen(s) && toKitchenNow(s) ? (
+          // Nov 3 2026: back from Google Maps on the way to the kitchen: slide on arrival (like a stop), Maps one tap away.
+          <>
+            {/* Nov 4 2026: Maps above the slider (like the stop page's Call / Message), so the slider is the last thing. */}
+            <button onClick={a.navKitchen} className="-mt-1 flex min-h-11 w-full items-center justify-center gap-1.5 text-[15px] font-semibold text-teal-deep">
+              <Navigation className="size-4" /> Maps
+            </button>
+            <SlideToConfirm label={t("Slide when you arrive")} tone="teal" onConfirm={() => a.arriveKitchen()} />
+          </>
+        ) : !atKitchen(s) ? (
+          <Button size="lg" className="w-full" onClick={a.navKitchen}>
             <Navigation /> {t("Navigate to the kitchen")}
           </Button>
         ) : route.every((x) => checkedCount(s, x) === x.bags.length) ? (
@@ -313,19 +346,19 @@ export function RouteTimeline() {
                 kind="kitchen"
                 railTime={kState === "done" && loadedAt != null ? loadedAt : (KITCHEN_READY[run] ?? KITCHEN.readyAt)}
                 title={run === 1 ? t("Kitchen pickup") : `${t("Kitchen pickup")} ${run}`}
-                detail={kState === "done" && loadedAt != null ? `Loaded ${fmtTime(loadedAt)}` : `Dispatch ready ${fmtTime(KITCHEN_READY[run] ?? KITCHEN.readyAt)}`}
+                detail={(() => {
+                  if (kState === "done" && loadedAt != null) return `Loaded ${fmtTime(loadedAt)}`;
+                  // Later pickups: the drive back from the last stop before it, on the time line like a stop's (Nov 4 2026).
+                  const before = live[live.indexOf(x) - 1];
+                  return `Dispatch ready ${fmtTime(KITCHEN_READY[run] ?? KITCHEN.readyAt)}${before ? ` · ${driveBetween(before.id, "k").mins} min drive` : ""}`;
+                })()}
                 avatar={<KitchenAvatar className="size-9" />}
                 tag={(() => {
                   const n = route.filter((y) => y.kind !== "pickup" && runOf(y) === run && s.stops[y.id].status !== "cancelled").length;
-                  // Later pickups: the drive back from the last stop before it.
-                  const before = live[live.indexOf(x) - 1];
                   return (
-                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      <span className="nums inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
-                        <ClipboardList className="size-3.5 text-teal" strokeWidth={2.2} />
-                        {n} {n === 1 ? t("order") : t("orders")}
-                      </span>
-                      {before && kState !== "done" && <DriveTag mins={driveBetween(before.id, "k").mins} />}
+                    <span className="nums inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
+                      <ClipboardList className="size-3.5 text-teal" strokeWidth={2.2} />
+                      {n} {n === 1 ? t("order") : t("orders")}
                     </span>
                   );
                 })()}
@@ -339,16 +372,6 @@ export function RouteTimeline() {
         );
       })}
     </ol>
-  );
-}
-
-/** Estimated drive into a row, in the same plain style as the hot / cold tags. */
-function DriveTag({ mins }: { mins: number }) {
-  return (
-    <span className="nums inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground">
-      <Car className="size-3.5 text-teal" strokeWidth={2.2} />
-      {mins} min drive
-    </span>
   );
 }
 
@@ -416,16 +439,16 @@ function StopRow({ stop, current, first, last, drive }: { stop: Stop; current: b
                   ? `ETA ${fmtTime(eta)} · by ${fmtTime(stop.windowEnd)}`
                   : pickup
                     ? `Pickup window ${fmtWindow(stop.windowStart, stop.windowEnd)}`
-                    : fmtWindow(stop.windowStart, stop.windowEnd)
+                    : // Nov 4 2026: the drive time joins the window line instead of a line of its own.
+                      `${fmtWindow(stop.windowStart, stop.windowEnd)}${along ? "" : ` · ${drive} min drive`}`
       }
       detailTone={showEta ? (eta > stop.windowEnd ? "late" : "ontime") : undefined}
       tag={
         cancelled || done ? tag : (
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            {/* Oct 26 2026: hot / cold / reusables always on one line of their own; the drive time goes under them. */}
+          // Nov 4 2026 (review: "too many things to focus"): one quiet line, hot / cold / collect as short tinted chips, and the one note (e.g. "Setup by") follows them.
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {/* A reusables pickup at the same address shows as the same "Reusables" work tag (Oct 22 2026), not a link-like note. */}
-            <WorkTags work={rideAlong.length > 0 && !workOf(stop).includes("reusables") ? [...workOf(stop), "reusables"] : workOf(stop)} variant="plain" short className="w-full !flex-nowrap" />
-            {!along && <DriveTag mins={drive} />}
+            <WorkTags work={rideAlong.length > 0 && !workOf(stop).includes("reusables") ? [...workOf(stop), "reusables"] : workOf(stop)} variant="plain" short chips="compact" className="!gap-x-1.5" />
             {tag}
           </span>
         )
@@ -449,7 +472,7 @@ function StopRow({ stop, current, first, last, drive }: { stop: Stop; current: b
  * The line is green up to the current step, grey after it. The current row has a soft teal wash.
  */
 function TimelineItem({
-  state, railTime, title, detail, detailTone, tag, onClick, first, last, struck, anchor, avatar, alert,
+  state, title, detail, detailTone, tag, onClick, first, last, struck, anchor, avatar, alert,
 }: {
   state: "done" | "current" | "todo"; kind: "kitchen" | "stop"; railTime: number; title: string; detail: string; struck?: boolean;
   detailTone?: "ontime" | "late"; tag?: ReactNode; onClick?: () => void; first?: boolean; last: boolean; anchor?: string; avatar?: ReactNode; alert?: boolean;
@@ -461,28 +484,34 @@ function TimelineItem({
   return (
     <li id={anchor} className={cn("scroll-mt-3", !last && "border-b border-border")}>
       <Tag onClick={onClick} className={cn("flex w-full items-stretch gap-3 px-4 py-3.5 text-left", current && "bg-teal-wash/70", onClick && "active:bg-muted/50")}>
-        <span className="nums w-[68px] shrink-0 whitespace-nowrap pt-0.5 text-[13px] font-medium leading-tight">
-          {current ? <span className="font-bold text-teal">Now</span> : <span className="text-muted-foreground">{fmtTime(railTime)}</span>}
-        </span>
-        {/* Rail: reaches through the row's padding (and the hairline under it) so the segments join into one line. */}
+        {/* Nov 4 2026 (review: "too many things to focus"): no time column on the left. It only repeated the time the row
+            already shows (window, ready or delivered time), and the row gets the width back. "Now" moved into the row. */}
+        {/* Nov 4 2026: the logo / picture leads the row, in front of the timeline. */}
+        {avatar && <span className={cn("flex shrink-0 self-start", done && "opacity-60")}>{avatar}</span>}
+        {/* Rail: reaches through the row's padding (and the hairline under it) so the segments join into one line.
+            Nov 4 2026: the dot is centred on the 36px logo beside it (row padding 14 + 18 = 32px down). */}
         <span aria-hidden className="relative -my-3.5 w-6 shrink-0">
-          {!first && <span className={cn("absolute left-1/2 top-0 h-[26px] w-0.5 -translate-x-1/2", done || current ? "bg-success" : "bg-border-strong")} />}
-          {!last && <span className={cn("absolute -bottom-px left-1/2 top-[26px] w-0.5 -translate-x-1/2", done ? "bg-success" : "bg-border-strong")} />}
+          {!first && <span className={cn("absolute left-1/2 top-0 h-[32px] w-0.5 -translate-x-1/2", done || current ? "bg-success" : "bg-border-strong")} />}
+          {!last && <span className={cn("absolute -bottom-px left-1/2 top-[32px] w-0.5 -translate-x-1/2", done ? "bg-success" : "bg-border-strong")} />}
           <span
             className={cn(
-              "absolute left-1/2 top-[14px] grid size-6 -translate-x-1/2 place-items-center rounded-full",
+              "absolute left-1/2 top-[20px] grid size-6 -translate-x-1/2 place-items-center rounded-full",
               alert ? "bg-danger text-white" : done ? "bg-success text-white" : current ? "border-2 border-teal bg-white" : "border-2 border-border-strong bg-white",
             )}
           >
             {alert ? <span className="text-[13px] font-extrabold leading-none">!</span> : done ? <Check className="size-3.5" strokeWidth={3} /> : current && <span className="size-2.5 rounded-full bg-teal" />}
           </span>
         </span>
-        {avatar && <span className={cn("shrink-0", done && "opacity-60")}>{avatar}</span>}
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-[15px] font-semibold leading-tight", done && "text-muted-foreground", struck && "line-through")}>{title}</span>
-          <span className={cn("nums mt-1 block truncate text-[13px]", detailTone === "late" ? "text-danger" : "text-muted-foreground")}>{detail}</span>
-          {/* Every row keeps room for two tag lines (empty if nothing to say), so all rows are the same height. */}
-          <span className="mt-1.5 flex min-h-[46px] items-start">{tag}</span>
+          {/* Nov 4 2026: a bigger name and a slightly heavier time line, so each row reads at a glance. */}
+          <span className={cn("block truncate text-[17px] font-semibold leading-tight", done && "text-muted-foreground", struck && "line-through")}>{title}</span>
+          <span className={cn("nums mt-1 block truncate text-[13px] font-medium", detailTone === "late" ? "text-danger" : "text-muted-foreground")}>
+            {current && <b className="font-bold text-teal">Now · </b>}
+            {detail}
+          </span>
+          {/* Nov 4 2026: every row keeps room for the work chips plus one note line (e.g. "Setup by"), so all rows are
+              the same height whether or not they have a note. */}
+          <span className="mt-1 flex min-h-[44px] items-start">{tag}</span>
         </span>
         {onClick && <ChevronRight className="mt-1 size-4 shrink-0 self-start text-muted-foreground/60" />}
       </Tag>

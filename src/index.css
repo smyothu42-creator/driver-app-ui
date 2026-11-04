@@ -7,6 +7,9 @@
   body {
     @apply bg-[#E4E6E5] text-foreground antialiased;
     text-rendering: optimizeLegibility;
+    /* Nov 4 2026: Inter for easier reading at a glance. cv05 gives "l" a tail and cv08 gives "I" serifs, so l, I and 1
+       can't be confused in names, order numbers and addresses. */
+    font-feature-settings: "cv05", "cv08";
   }
   :focus-visible { outline: 2px solid #007078; outline-offset: 2px; }
   [data-dark-surface] :focus-visible { outline-color: #F5E516; }
@@ -16,6 +19,8 @@
   .nums { font-variant-numeric: tabular-nums; }
   .text-overline { @apply text-2xs font-semibold text-muted-foreground; }
   .hero-yellow { background: linear-gradient(135deg, #F8EC58 0%, #F5E516 55%, #EFD90C 100%); }
+  /* Nov 4 2026: "Go on duty" in a deeper, warmer yellow with a soft edge, so it stands out from the white card. */
+  .btn-yellow { background: linear-gradient(135deg, #F7E11B 0%, #F2D300 55%, #E8C400 100%); box-shadow: inset 0 0 0 1px rgb(150 120 0 / 0.18), 0 1px 2px rgb(0 64 69 / 0.12); }
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { scrollbar-width: none; }
   /* Everything inside the phone screen scrolls without a visible bar, like a native app. */
@@ -45,16 +50,28 @@
 @keyframes ripple { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.1); opacity: 0; } }
 @keyframes rise-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } to { opacity: 1; transform: none; } }
 .anim-pop { animation: pop-in 380ms cubic-bezier(.2,.9,.3,1.2) both; }
+/* Nov 4 2026: iOS system alert entrance (a slight zoom down with a fade). */
+@keyframes alert-in { from { transform: scale(1.15); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.anim-alert { animation: alert-in 220ms cubic-bezier(.2,.8,.2,1) both; }
 .anim-draw { stroke-dasharray: 24; animation: draw 300ms 180ms ease-out both; }
 .anim-ripple { animation: ripple 700ms 120ms ease-out both; }
 .anim-rise { animation: rise-in 260ms 160ms cubic-bezier(.2,.8,.2,1) both; }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-12px) scale(.98); } to { opacity: 1; transform: none; } }
 .anim-drop { animation: drop-in 240ms cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) {
-  .anim-sheet, .anim-fade, .anim-screen, .anim-pulse, .anim-dash, .anim-glow, .anim-scanline, .anim-pop, .anim-draw, .anim-ripple, .anim-rise, .anim-drop { animation: none; }
+  .anim-sheet, .anim-fade, .anim-screen, .anim-pulse, .anim-dash, .anim-glow, .anim-scanline, .anim-pop, .anim-alert, .anim-draw, .anim-ripple, .anim-rise, .anim-drop { animation: none; }
 }
 
 /* Real map (MapLibre): keep the attribution clear of floating cards, and use the app font for it. */
 .sfk-map .maplibregl-ctrl-bottom-right { bottom: var(--map-attrib-bottom, 0px); }
 .sfk-map .maplibregl-ctrl-attrib { font-family: inherit; font-size: 10px; }
 .sfk-map .maplibregl-canvas { outline: none; }
+
+/* Nov 4 2026: iPhone 18 Pro "Dark Cherry" metal band around the desktop phone frame. A real phone shows no frame. */
+.frame-cherry { background: linear-gradient(145deg, #7A2E3D 0%, #4E1622 38%, #3A0F18 62%, #6B2533 100%); }
+@media (max-width: 500px) { .frame-cherry { background: none; } }
+
+/* Nov 4 2026: the desktop frame's on-screen keyboard slides up from the bottom, like iOS. */
+@keyframes kb-up { from { transform: translateY(100%); } to { transform: none; } }
+.anim-kb { animation: kb-up 300ms cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .anim-kb { animation: none; } }

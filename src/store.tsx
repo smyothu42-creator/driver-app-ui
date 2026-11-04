@@ -11,7 +11,7 @@ export type Screen =
   | { name: "tabs" }
   | { name: "stop"; id: string }
   | { name: "navigate"; id: string }
-  | { name: "camera"; id: string; kind?: "food" | "reusables" } // kind: retake just that photo (from Proof)
+  | { name: "camera"; id: string; kind?: "food" | "reusables" | "collect" } // kind: retake just that photo (from Proof); "collect": the reusables pickup photo (Nov 4 2026)
   | { name: "proof"; id: string }
   | { name: "tracking" }
   | { name: "scan"; id?: string } // #9 packing-slip scanner at the kitchen; `id` = opened from that order, so the next scan reads its slip
@@ -161,10 +161,14 @@ export interface State {
   runLoadedAt: Record<number, number>; // when each kitchen pickup was loaded
   pickupDone: boolean;
   pickupAt?: number;
+  /** Nov 3 2026: the drive back to the kitchen for a later pickup (run > 1): started in Google Maps, then arrived. */
+  kitchenTrip?: { run: number; arrived: boolean };
   bagChecks: Record<string, boolean>;
   stops: Record<string, StopState>;
   stack: Screen[];
   tab: Tab;
+  /** Nov 4 2026: which Schedule tab to show when another screen sends the driver there (e.g. "Back to requests"). */
+  schedView?: "requested" | "accepted";
   sheet: Sheet | null;
   toast: string | null;
   /** Success pop-up (white card, green tick) shown briefly at the top, e.g. "Slip scanned". */
@@ -320,7 +324,7 @@ function useAppState() {
         patch((p) => ({ stack: [...p.stack, scr], sheet: null, focusId: "id" in scr ? scr.id : p.focusId })),
       back: () => patch((p) => ({ stack: p.stack.length > 1 ? p.stack.slice(0, -1) : p.stack, sheet: null })),
       reset: (scr: Screen) => patch({ stack: [scr], sheet: null }),
-      setTab: (tab: Tab) => patch({ tab, stack: [{ name: "tabs" }], sheet: null }),
+      setTab: (tab: Tab) => patch({ tab, stack: [{ name: "tabs" }], sheet: null, schedView: undefined }),
       openSheet: (sheet: Sheet) => patch((p) => ({ sheet, focusId: "id" in sheet ? sheet.id : p.focusId })),
       closeSheet: () => patch({ sheet: null }),
       focus: (id: string) => patch({ focusId: id }),
@@ -380,6 +384,27 @@ function useAppState() {
           stack: [...prev.stack.filter((x) => x.name !== "navigate"), { name: "navigate", id }],
         }));
       },
+      /** Nov 3 2026: drive back to the kitchen for the next pickup (Google Maps), with Kitchen pickup behind it. */
+      navKitchen: () => {
+        toast("Opening Google Maps…");
+        set((prev) => ({
+          ...prev,
+          clock: prev.clock + 1,
+          sheet: null,
+          kitchenTrip: { run: prev.run, arrived: false },
+          stack: [{ name: "tabs" }, { name: "kitchen" }, { name: "navigate", id: "k" }],
+        }));
+      },
+      /** Arrived back at the kitchen: Kitchen pickup moves on to scanning this pickup's slips. */
+      arriveKitchen: (driveMins = 0) =>
+        set((prev) => ({
+          ...prev,
+          clock: prev.clock + driveMins,
+          sheet: null,
+          kitchenTrip: { run: prev.run, arrived: true },
+          stack: [{ name: "tabs" }, { name: "kitchen" }],
+          ...queued(prev),
+        })),
       arrive: (id: string, driveMins: number) =>
         set((prev) => ({
           ...prev,
@@ -875,6 +900,13 @@ export function nextStop(s: Pick<State, "claims" | "stops"> & Partial<Pick<State
   const open = routeOf(s).filter((x) => openStatus(s.stops[x.id]) && !pickupDelivery(s, x));
   return open.find((x) => !s.stops[x.id].issue) ?? open[0];
 }
+
+/** Whether the driver is at the kitchen for this pickup: the first one starts there; later ones once they've arrived back. */
+export function atKitchen(s: Pick<State, "run" | "kitchenTrip" | "scanned"> & Parameters<typeof runStops>[0]) {
+  return s.run === 1 || (s.kitchenTrip?.run === s.run && s.kitchenTrip.arrived) || runStops(s).some((x) => s.scanned[x.id]);
+}
+/** On the way back to the kitchen (Google Maps started, not arrived yet). */
+export const toKitchenNow = (s: Pick<State, "run" | "kitchenTrip">) => s.kitchenTrip?.run === s.run && !s.kitchenTrip.arrived;
 
 /** Deliveries loaded on the current kitchen pickup (cancelled ones drop out). */
 export function runStops(s: Parameters<typeof liveRoute>[0] & Pick<State, "run">, run = s.run) {

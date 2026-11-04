@@ -82,7 +82,8 @@ export interface Stop {
   /** Delivery instructions as set fields (#38): parking and access are their own rows. */
   parking?: string;
   backupContact?: Contact; // #2
-  returns?: string; // reusable packaging to collect
+  /** A note from dispatch about the reusables to collect (shown as a dispatch comment on the stop page). Not in the schema yet. */
+  returns?: string;
   reusables?: Reusable[]; // what went out with the order, from its reusables packing slip (#50, #53)
   /** Oct 26 2026: the order the reusables went out with. The collect screen shows it instead of asking for counts. */
   fromOrder?: { orderNo: string; date: string; type: string };

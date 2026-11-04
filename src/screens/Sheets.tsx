@@ -1,9 +1,10 @@
 import { PdfPages } from "../components/PdfView";
 import { useRef, useState } from "react";
-import { AlertTriangle, Camera, Check, ClipboardList, X, CheckCircle2, ChefHat, Clock, Recycle, Share2, Navigation, BadgeCheck, Building2, Download, Headphones, MapPin, MessageSquare, Phone, ZoomIn, ZoomOut } from "lucide-react";
-import { findStop, isLoaded, liveRoute, needsKitchenRun, stopSteps, useApp, nextStop, useT } from "../store";
+import { AlertTriangle, CalendarDays, Camera, Check, ClipboardList, X, Clock, Recycle, Share2, Navigation, BadgeCheck, Building2, Download, Headphones, MapPin, MessageSquare, Phone, ZoomIn, ZoomOut } from "lucide-react";
+import { findStop, isLoaded, liveRoute, needsKitchenRun, useApp, nextStop, useT } from "../store";
 import { DISPATCH, KITCHEN, KITCHEN_READY, runOf, ROUTE_ISO, SETTINGS, SFK_TEAM, WEEKDAYS, fmtHours, fmtTime, fmtWindow, weekdayOf, type Contact } from "../data/route";
-import { Button, cn, IconChip, Sheet, StepTrack, StopAvatar, SfkMark } from "../components/ui";
+import { Button, cn, IconChip, Sheet, StopAvatar, SfkMark } from "../components/ui";
+import { CheckCircle as CheckCircleFill } from "@phosphor-icons/react";
 import { dishOf, optionsOf, orderSize } from "./Pickup";
 import { collectLeft, ContactRow, StopInstructions } from "./StopDetail";
 import { HandoffPicker } from "./Proof";
@@ -154,27 +155,22 @@ function PhotoSheet({ id }: { id: string }) {
 
 /** #11 Setup on arrival, as a dialog: tick every step, then "Take delivery photo" unlocks and opens the camera. */
 /**
- * Oct 26 2026: on arrival, before setup, the driver ticks off every item of the order as they put it down, so nothing
- * is left in the van. Family style keeps the kitchen's groups (each main with its sides). Then setup (if the order
- * has one), else the delivery photo.
+ * Nov 3 2026 (review: drivers always drop everything, so ticking each item again is busywork): on arrival the driver
+ * says how they're leaving it, then sees the whole order as a ticked list to show the person receiving it. One button
+ * confirms it all. A split drop in one building is two separate drop-offs, so there's no per-item ticking here.
+ * Family style keeps the kitchen's groups (each main with its sides); individual meals are one row per dish.
  */
 function DropCheckSheet({ id }: { id: string }) {
   const { s, a } = useApp();
   const t = useT();
   const stop = findStop(s, id);
   const st = s.stops[id];
-  const done = st.dropDone ?? {};
-  const left = stop.bags.filter((b) => !done[b.id]).length;
-  const all = left === 0;
-  const toggle = (bid: string) => a.updateStop(id, { dropDone: { ...done, [bid]: !done[bid] } });
   const groups = stop.bags.reduce<{ name?: string; items: typeof stop.bags }[]>((acc, b) => {
     const g = acc.find((x) => x.name === b.group);
     if (g) g.items.push(b);
     else acc.push({ name: b.group, items: [b] });
     return acc;
   }, []);
-  // Oct 26 2026: individual meals are put down as items, not by name: one row per dish ("9× Lemon chicken rice bowl"),
-  // most first, ticking every meal of that dish. Options ("no cilantro") show under the dish with whose they are.
   const dishes = Object.values(
     stop.bags.reduce<Record<string, { name: string; items: typeof stop.bags }>>((acc, b) => {
       (acc[dishOf(b)] ??= { name: dishOf(b), items: [] }).items.push(b);
@@ -186,87 +182,67 @@ function DropCheckSheet({ id }: { id: string }) {
   const goTo = useGoTo();
   const handoff = st.handoff ?? "handed"; // Oct 27 2026: "Handed to someone" by default
   const needsName = handoff === "handed" && !st.receivedBy?.trim();
+  // A tick, not a checkbox: it's a list to show, not to fill in.
+  const tick = (
+    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-success text-white" aria-hidden>
+      <Check className="size-4" strokeWidth={3} />
+    </span>
+  );
   return (
-    <Sheet title={t("Check drop-off")} onClose={a.closeSheet}>
-      <p className="nums -mt-3 mb-4 text-[13px] text-muted-foreground">
-        How you're leaving it, then tick each item as you put it down
-      </p>
+    <Sheet title={t("Drop off order")} onClose={a.closeSheet}>
+      <p className="-mt-3 mb-4 text-[13px] text-muted-foreground">How you're leaving it, then show the list to whoever receives it</p>
       {/* Same choice as Proof of delivery (one answer on the stop). */}
       <div className="mb-4">
         <HandoffPicker id={id} />
       </div>
       <p className="nums mb-2 text-[13px] font-semibold text-muted-foreground">
-        {stop.bags.length - left} of {stop.bags.length} items
+        {stop.bags.length} items · {stop.orderNo}
       </p>
-      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border-strong bg-card">
-        <button
-          role="checkbox"
-          aria-checked={all}
-          onClick={() => a.updateStop(id, { dropDone: Object.fromEntries(stop.bags.map((b) => [b.id, !all])) })}
-          className="flex min-h-12 w-full items-center gap-3 bg-muted/60 px-4 text-left text-[15px] font-semibold"
-        >
-          <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2", all ? "border-success bg-success text-white" : "border-teal bg-white")}>{all && <Check className="size-4" strokeWidth={3} />}</span>
-          All {stop.bags.length} items
-        </button>
+      <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border-strong bg-card">
         {byDish
           ? dishes.map((d) => {
-              const on = d.items.every((b) => done[b.id]);
               const options = d.items.filter((b) => optionsOf(b)).map((b) => `${optionsOf(b)} (${b.label.split(" ")[0]})`);
               return (
-                <button
-                  key={d.name}
-                  role="checkbox"
-                  aria-checked={on}
-                  onClick={() => a.updateStop(id, { dropDone: { ...done, ...Object.fromEntries(d.items.map((b) => [b.id, !on])) } })}
-                  className={cn("flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors", on && "bg-success-bg")}
-                >
-                  <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2 transition-colors", on ? "border-success bg-success text-white" : "border-teal bg-teal-wash")}>
-                    {on && <Check className="size-4" strokeWidth={3} />}
-                  </span>
-                  <span className={cn("nums w-9 shrink-0 text-xl font-bold leading-none", on ? "text-muted-foreground" : "text-teal-deep")}>{d.items.length}×</span>
+                <li key={d.name} className="flex min-h-14 items-center gap-3 px-4 py-2.5">
+                  {tick}
+                  <span className="nums w-9 shrink-0 text-xl font-bold leading-none text-teal-deep">{d.items.length}×</span>
                   <span className="min-w-0">
-                    <span className={cn("block text-[15px] font-semibold leading-snug", on && "text-muted-foreground")}>{d.name}</span>
+                    <span className="block text-[15px] font-semibold leading-snug">{d.name}</span>
                     {options.length > 0 && <span className="block text-[13px] font-semibold leading-snug text-teal-deep">{options.join(", ")}</span>}
                   </span>
-                </button>
+                </li>
               );
             })
           : groups.map((g, gi) => (
-              <div key={g.name ?? gi} className="divide-y divide-border">
+              <li key={g.name ?? gi}>
                 {g.name && <p className="bg-muted/40 px-4 py-1.5 text-[13px] font-bold uppercase tracking-wide text-muted-foreground">{g.name}</p>}
-                {g.items.map((b) => (
-                  <button
-                    key={b.id}
-                    role="checkbox"
-                    aria-checked={!!done[b.id]}
-                    onClick={() => toggle(b.id)}
-                    className={cn("flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors", done[b.id] && "bg-success-bg")}
-                  >
-                    <span className={cn("grid size-7 shrink-0 place-items-center rounded-md border-2 transition-colors", done[b.id] ? "border-success bg-success text-white" : "border-teal bg-teal-wash")}>
-                      {done[b.id] && <Check className="size-4" strokeWidth={3} />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className={cn("block text-[15px] font-medium leading-snug", done[b.id] && "text-muted-foreground")}>{b.label}</span>
-                      {b.detail && <span className="block text-[13px] leading-snug text-muted-foreground">{b.detail}</span>}
-                    </span>
-                  </button>
-                ))}
-              </div>
-          ))}
-      </div>
+                <ul className="divide-y divide-border">
+                  {g.items.map((b) => (
+                    <li key={b.id} className="flex min-h-14 items-center gap-3 px-4 py-2.5">
+                      {tick}
+                      <span className="min-w-0">
+                        <span className="block text-[15px] font-medium leading-snug">{b.label}</span>
+                        {b.detail && <span className="block text-[13px] leading-snug text-muted-foreground">{b.detail}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+      </ul>
       {/* Stuck to the bottom of the sheet while the item list scrolls. */}
       <div className="sticky -bottom-8 -mx-5 -mb-8 mt-2 bg-card px-5 pb-8 pt-3">
         <Button
           size="lg"
           className="w-full"
-          disabled={!all || needsName}
+          disabled={needsName}
           onClick={() => {
-            if (!st.handoff) a.updateStop(id, { handoff });
+            a.updateStop(id, { handoff, dropDone: Object.fromEntries(stop.bags.map((b) => [b.id, true])) });
             goTo(next);
           }}
         >
           <NextLabel next={next} />
-          {!all ? ` · ${left} left` : needsName ? " · add who got it" : ""}
+          {needsName && " · add who got it"}
         </Button>
       </div>
     </Sheet>
@@ -322,6 +298,9 @@ function CollectSheet({ id, at }: { id: string; at: string }) {
   const noteOk = result !== "not_collected" || note.trim().length > 0;
   const next = afterStep(s, at, id);
   const where = stop.returns ?? stop.dropoffNotes;
+  // Nov 4 2026: a reusables-only pickup uses this same sheet (was the full Collect reusables page), with no photo step:
+  // Collected → confirm; Not collected → send to dispatch with the note.
+  const pickupOnly = at === id;
   return (
     <Sheet title={t("Collect reusables")} onClose={a.closeSheet}>
       {stop.fromOrder && (
@@ -344,7 +323,8 @@ function CollectSheet({ id, at }: { id: string; at: string }) {
           </p>
         )}
       </div>
-      <div role="radiogroup" className="mt-4 grid grid-cols-2 gap-2.5">
+      {/* Nov 4 2026: the same pill switch as "Handed to someone | Left at drop-off" (was two bordered boxes). */}
+      <div role="radiogroup" className="mt-4 grid grid-cols-2 gap-1 rounded-full border border-border-strong bg-white p-1">
         {(
           [
             ["collected", "Collected", Check],
@@ -357,8 +337,8 @@ function CollectSheet({ id, at }: { id: string; at: string }) {
             aria-checked={result === v}
             onClick={() => setResult(v)}
             className={cn(
-              "flex min-h-14 items-center justify-center gap-2 rounded-xl border-2 px-3 text-[15px] font-semibold",
-              result === v ? (v === "collected" ? "border-success bg-success-bg text-success" : "border-warning-border bg-warning-bg text-warning") : "border-border-strong bg-card",
+              "flex h-12 items-center justify-center gap-2 rounded-full px-3 text-[15px] font-semibold transition-colors",
+              result === v ? "bg-teal-deep text-white" : "text-foreground/70",
             )}
           >
             <Icon className="size-5" strokeWidth={2.5} /> {label}
@@ -376,17 +356,38 @@ function CollectSheet({ id, at }: { id: string; at: string }) {
           className="mt-3 w-full resize-none rounded-xl border border-border-strong bg-card px-3 py-2.5 text-base outline-none focus:border-teal focus:ring-2 focus:ring-teal/30"
         />
       )}
-      <Button
-        size="lg"
-        className="mt-5 w-full"
-        disabled={!result || !noteOk}
-        onClick={() => {
-          a.collectReusables(id, result!, 0, note.trim() || undefined);
-          goTo(next);
-        }}
-      >
-        <NextLabel next={next} />
-      </Button>
+      {pickupOnly ? (
+        <Button
+          size="lg"
+          className="mt-5 w-full"
+          disabled={!result || !noteOk}
+          onClick={() => {
+            // Nov 4 2026: no photo step on a reusables pickup; confirming finishes it and tells dispatch.
+            a.collectReusables(id, result!, 0, note.trim() || undefined);
+            a.toast(result === "collected" ? "Collected · sent to dispatch" : "Not collected · sent to dispatch");
+          }}
+        >
+          {result === "not_collected" ? (
+            "Send to dispatch"
+          ) : (
+            <>
+              <Check /> Confirm collected
+            </>
+          )}
+        </Button>
+      ) : (
+        <Button
+          size="lg"
+          className="mt-5 w-full"
+          disabled={!result || !noteOk}
+          onClick={() => {
+            a.collectReusables(id, result!, 0, note.trim() || undefined);
+            goTo(next);
+          }}
+        >
+          <NextLabel next={next} />
+        </Button>
+      )}
     </Sheet>
   );
 }
@@ -587,13 +588,15 @@ function DeliveredSheet({ id }: { id: string }) {
       </div>
       {next && needsKitchenRun(s, next.id) ? (
         // Next stop is an order claimed after pickup: it has to be loaded first (step 4).
-        <Button size="lg" className="mt-5 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "pickup", id: next.id }] }))}>
+        // Nov 4 2026: goes to that stop's page, where the driver slides once it's loaded (no separate load page).
+        <Button size="lg" className="mt-5 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "stop", id: next.id }] }))}>
           <SfkMark className="size-5" /> Back to kitchen for stop {next.seq}
         </Button>
       ) : next && !isLoaded(s, next) ? (
         // Run delivered: the next stop is on the next kitchen pickup, so the driver heads back to load it.
-        <Button size="lg" className="mt-5 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }], tab: "map" }))}>
-          <SfkMark className="size-5" /> Back to the kitchen
+        // Nov 3 2026: straight into Google Maps to the kitchen, with Kitchen pickup behind it.
+        <Button size="lg" className="mt-5 w-full" onClick={a.navKitchen}>
+          <Navigation /> Navigate to the kitchen
         </Button>
       ) : next ? (
         <Button size="lg" className="mt-5 w-full" onClick={() => a.startNav(next.id)}>
@@ -675,38 +678,32 @@ function EndShiftSheet() {
 function ClaimedSheet({ id }: { id: string }) {
   const { s, a } = useApp();
   const stop = findStop(s, id);
-  const kitchenRun = needsKitchenRun(s, id);
-  const { steps, current } = stopSteps(s, stop);
+  const left = s.requests.filter((r) => r.status === "pending").length;
   return (
     <Sheet onClose={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "stop", id }] }))}>
-      <div className="text-center">
-        <IconChip tone="success" className="mx-auto size-16 rounded-full [&_svg]:size-8">
-          <CheckCircle2 />
-        </IconChip>
-        <h3 className="mt-3 text-xl font-bold tracking-tight">Added to your route</h3>
-        <p className="nums mt-1 text-[13px] text-muted-foreground">
-          {stop.name} is stop {stop.seq} · {fmtWindow(stop.windowStart, stop.windowEnd)}. Dispatch sees you accepted.
-        </p>
-      </div>
-      <StepTrack steps={steps} current={current} className="mt-4" />
-      <div className="mt-4 flex gap-2.5 rounded-xl bg-muted p-3 text-[13px]">
-        <ChefHat className="mt-0.5 size-4 shrink-0 text-teal" />
-        <span>
-          {kitchenRun
-            ? "Next: head back to the kitchen to load this order."
-            : "It's been added to your kitchen loading checklist."}
+      {/* Nov 4 2026 (review: "should match the theme more"): left-aligned like the app's section headers: the same 48px
+          icon tile, the title in SFK teal, then the stop itself (name, stop number and window) the way Route shows it. */}
+      <div className="flex items-center gap-3">
+        <span className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-success-bg text-success">
+          <CheckCircleFill weight="fill" className="size-7" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <h3 className="text-[22px] font-bold leading-tight tracking-tight text-teal-deep">Added to your route</h3>
+          <p className="mt-0.5 text-[15px] text-muted-foreground">Dispatch sees you accepted.</p>
         </span>
       </div>
-      {kitchenRun ? (
-        <Button size="lg" className="mt-4 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "pickup", id }] }))}>
-          Open loading checklist
-        </Button>
-      ) : (
-        <Button size="lg" className="mt-4 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }], tab: "map" }))}>
-          Back to my route
-        </Button>
-      )}
-      <Button size="md" variant="ghost" className="mt-1 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "stop", id }] }))}>
+      <div className="mt-4 rounded-2xl bg-muted/70 px-4 py-3">
+        <p className="text-[17px] font-semibold leading-tight">{stop.name}</p>
+        <p className="nums mt-1 text-[15px] font-medium text-muted-foreground">
+          Stop {stop.seq} · {fmtWindow(stop.windowStart, stop.windowEnd)}
+        </p>
+      </div>
+      {/* Nov 4 2026 (review): no kitchen note and no progress bar here, and two same-size buttons: carry on through the requests, or open
+          this stop. ("Back to my route" removed; the stop page has its own way back.) */}
+      <Button size="lg" className="mt-4 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }], tab: "schedule", schedView: left > 0 ? "requested" : "accepted" }))}>
+        <CalendarDays /> {left > 0 ? `Back to requests · ${left} left` : "Back to schedule"}
+      </Button>
+      <Button size="lg" variant="outline" className="mt-2.5 w-full" onClick={() => a.jump(() => ({ sheet: null, stack: [{ name: "tabs" }, { name: "stop", id }] }))}>
         View stop details
       </Button>
     </Sheet>
@@ -784,29 +781,38 @@ function AcceptAllSheet({ ids }: { ids: string[] }) {
           <AlertTriangle className="size-4 shrink-0" /> {outside} {outside === 1 ? "is" : "are"} outside your availability
         </p>
       )}
+      {/* Nov 4 2026 (review: "cleaner"): each request as on the New requests list (name, then the day in teal and the
+          time), the confirmation on a soft band, and Not now / Accept all side by side, the same size. */}
       <ul className="nums -mx-5 divide-y divide-border border-y border-border">
         {rs.map((r) => {
           const off = daysOf(r).some(([iso]) => !inHours(s.openHours, iso, r.time));
-          const day = r.dateLabel.replace(/^\w+, /, ""); // "Wed, Oct 7" → "Oct 7"
+          const day = r.dateISO === ROUTE_ISO ? "Today" : r.dateLabel;
           return (
-            <li key={r.id} className="flex min-h-12 items-center gap-3 px-5 py-2 text-[15px]">
-              <span className="w-[68px] shrink-0 text-[13px] font-semibold text-teal-deep">{r.days ? `${day} +${r.days.length - 1}` : day}</span>
-              <span className="min-w-0 flex-1 truncate font-semibold">{r.name}</span>
-              {off ? <AlertTriangle aria-label="Outside your availability" className="size-4 shrink-0 text-warning" /> : <span className="shrink-0 text-[13px] text-muted-foreground">{fmtTime(r.time)}</span>}
+            <li key={r.id} className="flex items-center gap-3 px-5 py-3">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[17px] font-semibold leading-tight">{r.name}</span>
+                <span className="mt-0.5 block truncate text-[15px] text-muted-foreground">
+                  <b className="font-semibold text-teal-deep">{day}</b> · ~{fmtTime(r.time)}
+                  {r.days && ` · ${r.days.length} days`}
+                </span>
+              </span>
+              {off && <AlertTriangle aria-label="Outside your availability" className="size-5 shrink-0 text-warning" />}
             </li>
           );
         })}
       </ul>
-      <button role="checkbox" aria-checked={sure} onClick={() => setSure((v) => !v)} className="mt-3 flex min-h-12 w-full items-center gap-3 text-left text-[15px] font-semibold leading-snug">
-        <span className={cn("grid size-6 shrink-0 place-items-center rounded-md border-2", sure ? "border-teal bg-teal text-white" : "border-teal bg-teal-wash")}>{sure && <Check className="size-4" strokeWidth={3} />}</span>
+      <button role="checkbox" aria-checked={sure} onClick={() => setSure((v) => !v)} className="-mx-5 flex min-h-14 w-[calc(100%+40px)] items-center gap-3 border-b border-border bg-muted/70 px-5 text-left text-[15px] font-semibold leading-snug">
+        <span className={cn("grid size-6 shrink-0 place-items-center rounded-md border-2", sure ? "border-teal bg-teal text-white" : "border-teal bg-white")}>{sure && <Check className="size-4" strokeWidth={3} />}</span>
         <span>I can do all {days} {days === 1 ? "day" : "days"}</span>
       </button>
-      <Button size="lg" className="mt-3 w-full" disabled={!sure} onClick={() => a.acceptAll(rs.map((r) => r.id))}>
-        Accept all {rs.length}
-      </Button>
-      <Button size="md" variant="ghost" className="mt-1 w-full" onClick={a.closeSheet}>
-        Not now
-      </Button>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button size="lg" variant="outline" className="w-full min-w-0 px-3" onClick={a.closeSheet}>
+          Not now
+        </Button>
+        <Button size="lg" className="w-full min-w-0 px-3" disabled={!sure} onClick={() => a.acceptAll(rs.map((r) => r.id))}>
+          Accept all {rs.length}
+        </Button>
+      </div>
     </Sheet>
   );
 }
@@ -820,7 +826,7 @@ function SkipSheet({ id }: { id: string }) {
   const stop = findStop(s, id);
   const [reason, setReason] = useState<string | null>(null);
   return (
-    <Sheet title="Ask dispatch to skip?" onClose={a.closeSheet}>
+    <Sheet title="Can't do this pickup?" onClose={a.closeSheet}>
       <p className="nums -mt-3 mb-4 text-[15px] text-muted-foreground">
         {stop.name} · pickup window {fmtWindow(stop.windowStart, stop.windowEnd)}
       </p>
@@ -832,9 +838,9 @@ function SkipSheet({ id }: { id: string }) {
           </button>
         ))}
       </div>
-      <p className="mt-3 text-[13px] text-muted-foreground">It stays on your route until dispatch replies.</p>
+      <p className="mt-3 text-[13px] text-muted-foreground">Dispatch decides whether to skip it. Keep it on your route until they reply.</p>
       <Button size="lg" className="mt-4 w-full" disabled={!reason} onClick={() => reason && a.requestSkip(id, reason)}>
-        {reason ? "Send to dispatch" : "Pick a reason"}
+        {reason ? "Ask dispatch to skip it" : "Pick a reason first"}
       </Button>
     </Sheet>
   );

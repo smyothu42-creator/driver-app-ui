@@ -79,7 +79,10 @@ export function Navigate({ id }: { id: string }) {
 
   const pins: Pin[] = [{ id: stop.id, at: stop.at, label: String(stop.seq), state: "active" }];
   // Leaving Google Maps → back to the stop's details page in the app (Oct 26 2026: not Home), to slide when arrived.
-  const exit = () => a.jump(() => ({ stack: [{ name: "tabs" }, { name: "stop", id: stop.id }], tab: "map", sheet: null }));
+  // Nov 3 2026: the kitchen leg isn't a stop, so it goes back to Kitchen pickup instead (was a blank screen).
+  // Arrived at the kitchen ("Done"): straight to scanning this pickup's slips.
+  const exit = () =>
+    toKitchen && arrived ? a.arriveKitchen(stop.driveMins) : a.jump(() => ({ stack: [{ name: "tabs" }, toKitchen ? { name: "kitchen" as const } : { name: "stop" as const, id: stop.id }], tab: "map", sheet: null }));
 
   return (
     <div className="relative h-full overflow-hidden bg-[#F1F3F4]" style={font}>
