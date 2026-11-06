@@ -45,6 +45,7 @@ const SCREEN_AREA: Record<string, Area> = {
   requests: "schedule",
   availability: "schedule",
   inbox: "notifications",
+  chat: "notifications",
   me: "profile",
   vehicle: "profile",
   notifSettings: "profile",

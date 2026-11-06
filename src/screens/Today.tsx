@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from "react";
-import { CalendarClock, Check, ChevronRight, ClipboardList, Clock, FileText, MessageSquare, Navigation, ScanLine } from "lucide-react";
+import { CalendarClock, Check, ChevronRight, ClipboardList, Clock, FileText, Navigation, ScanLine } from "lucide-react";
 import { isOn, laterFor } from "../data/sprints";
 import { type State, atKitchen, toKitchenNow, isLoaded, liveRoute, slipsToday, myAssignment, needsKitchenRun, runStops, useApp, nextStop, pickupDelivery, pickupsAt, useRoute, useT } from "../store";
 import { KITCHEN, KITCHEN_READY, DRIVER, driveBetween, fmtTime, fmtWindow, runOf, windowStatus, workOf, type Stop } from "../data/route";
@@ -92,35 +92,20 @@ export function DutyCard() {
   );
 }
 
-/** Requests and Inbox, two icons in one white pill. Oct 26 2026: moved from Home's header to the Route tab's. */
+/** Requests, a round white button on the Route tab's header. Nov 6 2026: Inbox left this pill for the Chat tab. */
 export function HeaderActions() {
   const { s, a } = useApp();
   const t = useT();
   // The requests button waits for the Schedule sprint (src/data/sprints.ts).
   const requests = !laterFor("schedule");
   const pending = requests ? s.requests.filter((r) => r.status === "pending").length : 0;
-  const fromDispatch = s.inbox.filter((m) => m.from === "dispatch" && !m.read).length;
+  if (!requests) return null;
   return (
-    <>
-    {/* Requests (#18) and Inbox (#6) in one white pill, like an iOS toolbar group (Oct 22 2026; on the Route tab since Oct 26): two icons, a hairline
-        between them, each keeping its own count. Oct 26 2026: the requests half stays put with nothing waiting, it just loses its count. */}
-    {/* Nov 4 2026: a little bigger (48px tall, 22px icons) so both are easier to see and tap. */}
-    <div className="flex h-12 items-center rounded-full bg-white text-teal-deep">
-      {requests && (
-        <>
-          <button onClick={() => a.push({ name: "requests" })} aria-label={pending ? `${pending} ${pending === 1 ? t("request needs your answer") : t("requests need your answer")}` : t("Requests")} className="relative grid h-12 w-[52px] place-items-center rounded-l-full active:bg-muted">
-            <CalendarClock className="size-[22px]" />
-            {pending > 0 && <span className="nums absolute right-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{pending}</span>}
-          </button>
-          <span aria-hidden className="h-6 w-px bg-border-strong" />
-        </>
-      )}
-      <button onClick={() => a.push({ name: "inbox" })} aria-label={`${t("Inbox")}, ${fromDispatch} messages`} className={cn("relative grid h-12 w-[52px] place-items-center active:bg-muted", requests ? "rounded-r-full" : "rounded-full")}>
-        <MessageSquare className="size-[22px]" />
-        {fromDispatch > 0 && isOn("notifications") && <span className="nums absolute right-1 top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{fromDispatch}</span>}
-      </button>
-    </div>
-    </>
+    // Requests (#18). Stays put with nothing waiting, it just loses its count (Oct 26 2026).
+    <button onClick={() => a.push({ name: "requests" })} aria-label={pending ? `${pending} ${pending === 1 ? t("request needs your answer") : t("requests need your answer")}` : t("Requests")} className="relative grid size-12 shrink-0 place-items-center rounded-full bg-white text-teal-deep active:bg-muted">
+      <CalendarClock className="size-[22px]" />
+      {pending > 0 && <span className="nums absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-[11px] font-bold text-white">{pending}</span>}
+    </button>
   );
 }
 

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
-import { isStaffAvailable, routeOf, useApp, vehicleOf } from "../store";
-import { DRIVER, OPEN_POOL, ROUTE_DATE, ROUTE_ISO, SETTINGS, STAFF, STAFF_ROLES, VEHICLES, WEEKDAYS, fmtTime, fmtWindow, type OpenDay, type StaffMember, type StaffRole, type Stop } from "../data/route";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight, MapPin, Pencil, Search, X } from "lucide-react";
+import { isStaffAvailable, nextStop, routeOf, useApp, vehicleOf, type VehicleProfile } from "../store";
+import { DRIVER, KITCHEN, OPEN_POOL, ROUTE_DATE, ROUTE_ISO, SETTINGS, STAFF, STAFF_ROLES, VEHICLES, WEEKDAYS, fmtTime, fmtWindow, type OpenDay, type StaffMember, type StaffRole, type Stop } from "../data/route";
 import { hoursUntil } from "../screens/Schedule";
 import { DEFAULT_HOURS, TIME_OPTIONS } from "../data/availability";
 import { Badge, cn, RoleBadge } from "./ui";
+import { MapView, type Pin } from "./MapView";
 
 /* ------------------------------------------------------------------
  * SFK Admin dispatch surfaces for US-814 (multi-driver) and US-815 (role labels).
@@ -528,7 +529,7 @@ export function DriverRequests() {
 /** Section title with an optional action on the right. */
 function SectionHead({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
-    <div className="mb-2 flex min-h-8 items-center justify-between gap-2">
+    <div className="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-2">
       <h3 className="text-[15px] font-semibold">{title}</h3>
       {action}
     </div>
@@ -590,44 +591,189 @@ export function OpenHoursEditor() {
 }
 
 /* ---------------- #5 / #8 duty + live location, #64 vehicle (storage details: dispatch edits) ---------------- */
-export function DriverProfile() {
+/**
+ * Nov 6 2026 (review: "editable throughout the platform and only edited when clicking on a pencil"): shows plain text
+ * with a pencil; the fields only appear after the pencil, with Save and Cancel, so nothing changes by accident.
+ */
+export function EditableBlock({ label, view, edit, canSave, saveLabel = "Save", onSave, onCancel, className = "px-4 py-3 text-sm" }: { label: string; view: ReactNode; edit: ReactNode; canSave: boolean; saveLabel?: string; onSave: () => void; onCancel: () => void; className?: string }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <div className={className}>
+      {editing ? (
+        <>
+          {edit}
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => {
+                onSave();
+                setEditing(false);
+              }}
+              disabled={!canSave}
+              className="h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40"
+            >
+              {saveLabel}
+            </button>
+            <button
+              onClick={() => {
+                onCancel();
+                setEditing(false);
+              }}
+              className="h-9 rounded-full px-3 text-[13px] font-semibold text-teal-deep hover:bg-teal-wash"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">{view}</div>
+          <button onClick={() => setEditing(true)} aria-label={`Edit ${label}`} title={`Edit ${label}`} className="-mr-1 -mt-1 grid size-9 shrink-0 place-items-center rounded-full text-teal-deep hover:bg-teal-wash">
+            <Pencil className="size-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EDIT_FIELD = "mt-1 h-10 w-full rounded-xl border border-control bg-card px-3 text-[13px] font-normal text-foreground outline-none focus:border-teal";
+const VEHICLE_YEARS = Array.from({ length: 20 }, (_, i) => 2026 - i);
+
+/**
+ * Nov 6 2026 (review): one summary row (duty status and how location is shared) that opens for the vehicle and storage
+ * details, so dispatch isn't always looking at them. "Live location" stays on that row and opens the driver on a map at
+ * any time, open or closed. The side panel starts closed; pages about this card pass `defaultOpen`.
+ */
+export function DriverProfile({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { s, a } = useApp();
+  const [open, setOpen] = useState(defaultOpen);
+  const [mapOpen, setMapOpen] = useState(false);
   const [draft, setDraft] = useState(s.storage);
-  // Picks up a demo reset while this panel is open.
+  const [car, setCar] = useState<VehicleProfile>(s.vehicle);
+  // Picks up a demo reset, or the driver's own change, while this panel is open.
   useEffect(() => setDraft(s.storage), [s.storage]);
+  useEffect(() => setCar(s.vehicle), [s.vehicle]);
   const dirty = draft.trim() !== s.storage && draft.trim().length > 0;
+  const carDirty = JSON.stringify(car) !== JSON.stringify(s.vehicle) && !!car.make.trim() && !!car.model.trim();
   const status = !s.signedIn ? "Signed out" : s.shiftOn ? "On duty" : "Off duty";
+  const showMap = mapOpen && s.shiftOn; // going off duty stops location, so the map closes with it
   return (
     <section>
       <SectionHead title={`${DRIVER.first} · duty & vehicle`} />
       <div className="divide-y divide-border rounded-2xl border border-border">
-        <div className="flex items-center gap-3 px-4 py-3 text-sm">
-          <span className={cn("size-2.5 shrink-0 rounded-full", s.shiftOn ? "bg-success" : "bg-control")} aria-hidden />
-          <span className="min-w-0 flex-1">
-            <span className="block font-semibold">{status}</span>
-            <span className="block text-[13px] text-muted-foreground">
-              {s.shiftOn ? `Live location on the map · since ${fmtTime(s.shiftStartedAt!)} · every 15 s` : "No location shared"}
+        <div className="flex items-center gap-2 py-1.5 pl-2 pr-3 text-sm">
+          <button onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} vehicle and storage details`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left active:bg-muted">
+            <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} aria-hidden />
+            <span className={cn("size-2.5 shrink-0 rounded-full", s.shiftOn ? "bg-success" : "bg-control")} aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{status}</span>
+              <span className="block text-[13px] text-muted-foreground">{s.shiftOn ? `Since ${fmtTime(s.shiftStartedAt!)} · every 15 s` : "No location shared"}</span>
             </span>
-          </span>
-          <Badge tone={s.shiftOn ? "success" : "neutral"}>{s.shiftOn ? "Live" : "Off"}</Badge>
+          </button>
+          {s.shiftOn ? (
+            <button onClick={() => setMapOpen(!mapOpen)} aria-expanded={showMap} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-control px-3 text-[13px] font-semibold text-teal-deep active:bg-teal-wash">
+              <MapPin className="size-4" /> {showMap ? "Hide map" : "Live location"}
+            </button>
+          ) : (
+            <Badge tone="neutral">Off</Badge>
+          )}
         </div>
-        <div className="px-4 py-3 text-sm">
-          <span className="block font-semibold">
-            {s.vehicle.year} {s.vehicle.make} {s.vehicle.model}
-          </span>
-          <span className="block text-[13px] text-muted-foreground">
-            Set by the driver · headcount {s.vehicle.headcount ? `${s.vehicle.headcount} besides the driver` : "not set"}
-          </span>
-        </div>
-        <label className="block px-4 py-3 text-sm">
-          <span className="block font-semibold">Storage details</span>
-          <span className="block text-[13px] text-muted-foreground">Only dispatch edits this. The driver reads it in Me → Vehicle.</span>
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-control bg-card p-3 text-[13px] leading-snug outline-none focus:border-teal" />
-        </label>
+        {showMap && <DriverLocation />}
+        {open && (
+          <>
+            <EditableBlock
+              label="vehicle"
+              canSave={carDirty}
+              saveLabel="Save · notify driver"
+              onSave={() => a.setDriverVehicle({ ...car, make: car.make.trim(), model: car.model.trim() })}
+              onCancel={() => setCar(s.vehicle)}
+              view={
+                <>
+                  <span className="block font-semibold">
+                    {s.vehicle.year} {s.vehicle.make} {s.vehicle.model}
+                  </span>
+                  <span className="block text-[13px] text-muted-foreground">Headcount {s.vehicle.headcount ? `${s.vehicle.headcount} besides the driver` : "not set"}</span>
+                </>
+              }
+              edit={
+                <>
+                  <span className="mb-2 block font-semibold">Vehicle</span>
+                  <div className="grid grid-cols-2 gap-2 text-[13px] font-semibold text-muted-foreground">
+                    <label>
+                      Make
+                      <input autoFocus value={car.make} onChange={(e) => setCar({ ...car, make: e.target.value })} className={EDIT_FIELD} />
+                    </label>
+                    <label>
+                      Model
+                      <input value={car.model} onChange={(e) => setCar({ ...car, model: e.target.value })} className={EDIT_FIELD} />
+                    </label>
+                    <label>
+                      Year
+                      <select value={car.year} onChange={(e) => setCar({ ...car, year: Number(e.target.value) })} className={EDIT_FIELD}>
+                        {VEHICLE_YEARS.map((y) => (
+                          <option key={y}>{y}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Headcount besides the driver
+                      <select value={car.headcount} onChange={(e) => setCar({ ...car, headcount: Number(e.target.value) })} className={EDIT_FIELD}>
+                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                          <option key={n}>{n}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </>
+              }
+            />
+            <EditableBlock
+              label="storage details"
+              canSave={dirty}
+              saveLabel="Save · notify driver"
+              onSave={() => a.setStorage(draft.trim())}
+              onCancel={() => setDraft(s.storage)}
+              view={
+                <>
+                  <span className="block font-semibold">Storage details</span>
+                  <span className="block text-[13px] text-muted-foreground">Only dispatch edits this. The driver reads it in Me → Vehicle.</span>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-snug">{s.storage}</p>
+                </>
+              }
+              edit={
+                <label className="block">
+                  <span className="block font-semibold">Storage details</span>
+                  <textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-control bg-card p-3 text-[13px] leading-snug outline-none focus:border-teal" />
+                </label>
+              }
+            />
+          </>
+        )}
       </div>
-      <button onClick={() => a.setStorage(draft.trim())} disabled={!dirty} className="mt-2 h-9 rounded-full bg-teal px-3.5 text-[13px] font-semibold text-white disabled:opacity-40">
-        {dirty ? "Save · notify driver" : "Saved"}
-      </button>
     </section>
+  );
+}
+
+/** The driver on the map with the day's stops. Same position the driver's own Route map shows. */
+function DriverLocation() {
+  const { s } = useApp();
+  const stops = routeOf(s);
+  const next = nextStop(s);
+  const lastDone = [...stops].reverse().find((x) => s.stops[x.id].status === "delivered");
+  const from = s.pickupDone && lastDone ? lastDone : KITCHEN;
+  const pins: Pin[] = [
+    { id: "k", at: KITCHEN.at, label: "SF", state: "kitchen" },
+    ...stops.map((x) => ({ id: x.id, at: x.at, label: String(x.seq), title: x.name, state: (s.stops[x.id].status === "delivered" ? "done" : x.id === next?.id ? "active" : "todo") as Pin["state"] })),
+  ];
+  return (
+    <div>
+      <div className="h-56">
+        <MapView pins={pins} driverAt={from.at} padding={{ top: 36, bottom: 36, left: 36, right: 36 }} />
+      </div>
+      <p className="nums px-4 py-2.5 text-[13px] text-muted-foreground">
+        <b className="font-semibold text-foreground">{from.name}</b>
+        {next && ` · next ${next.name}`} · {fmtTime(s.clock)}
+      </p>
+    </div>
   );
 }

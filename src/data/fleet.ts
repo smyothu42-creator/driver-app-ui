@@ -132,3 +132,24 @@ export const FLEET_ALERTS: FleetAlert[] = [
   { id: "a-jordan", driverId: "u-jordan", kind: "declined", title: "Jordan declined Fri, Oct 9", detail: "Waverly Group · “Car's in the shop Friday”", action: "Send to someone else" },
   { id: "a-aisha", driverId: "u-aisha", kind: "no_answer", title: "Aisha hasn't answered", detail: "Thu, Oct 8 · Juniper School · sent 2 days ago", action: "Remind" },
 ];
+
+/** One message in a dispatch ↔ driver thread. `mine` means dispatch sent it. */
+export interface ChatMsg {
+  id: string;
+  at: number;
+  mine: boolean;
+  text: string;
+  sub?: string;
+  read?: boolean; // already read by dispatch when the demo starts
+  with?: string; // written by another member of dispatch staff (first name)
+}
+
+/** Nov 6 2026: demo threads for the fleet, one per driver, shared by all dispatch staff. Marcus's is the live one, on the phone's Chat tab. */
+export const FLEET_CHATS: Record<string, ChatMsg[]> = {
+  "u-lena": [
+    { id: "c-lena-1", at: H(9, 45), mine: false, text: "Loaded and leaving the kitchen", read: true },
+    { id: "c-lena-2", at: H(9, 46), mine: true, text: "Thanks Lena", with: "Sam" },
+  ],
+  "u-priya": [{ id: "c-priya-1", at: H(10, 52), mine: false, text: "Oak & Ivy: building locked, no answer at the front desk" }],
+  "u-diego": [{ id: "c-diego-1", at: H(11, 2), mine: false, text: "Harbor Analytics: traffic on the Embarcadero, about 10 min late" }],
+};

@@ -688,8 +688,8 @@ function Flows({ onClose }: { onClose: () => void }) {
           area: "notifications",
           flow: [
             Start("Dispatch sends a message"),
-            Sys("Bell shows unread count"),
-            Scr("Inbox", () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }, { name: "inbox" }] }))),
+            Sys("Chat tab shows unread count"),
+            Scr("Chat with dispatch", () => a.jump(() => ({ ...onShift, stack: [{ name: "tabs" }], tab: "chat" }))),
             Dec("Message about…", [
               ["A stop / request", [Act("Tap → opens it")]],
               ["General", [Act("Reply with a preset", "Dispatch: reply on the thread")]],

@@ -106,13 +106,15 @@ export const DRIVER = {
 };
 
 export const DISPATCH: Contact = { name: "Alana Brooks", role: "Dispatch coordinator", phone: "(415) 555-0100" };
+/** Nov 6 2026: the dispatch staff in this demo. They share one chat per driver; on the live system it's everyone with the dispatch_staff role. */
+export const DISPATCHERS: Contact[] = [DISPATCH, { name: "Sam Okafor", role: "Dispatch coordinator", phone: "(415) 555-0105" }];
 /** Oct 26 2026: sign-in's "Call dispatch" opens this one-pager with dispatch's number (the driver isn't signed in yet). */
 /** Oct 27 2026: sample delivery details PDFs, one per address (SFK supplies the real files). */
 const detailsPdf = (name: string) => `${import.meta.env.BASE_URL}delivery-details-${name}.pdf`;
 export const DISPATCH_CONTACT_URL = `${import.meta.env.BASE_URL}superfine-dispatch-contact.pdf`;
 /** SFK people a driver can call from a stop ("SFK Team" sheet). Dispatch first. */
 export const SFK_TEAM: (Contact & { tag: string })[] = [
-  { ...DISPATCH, tag: "Dispatch" },
+  ...DISPATCHERS.map((d) => ({ ...d, tag: "Dispatch" })),
   { name: "Marco Diaz", role: "Kitchen lead · Superfine Kitchen", phone: "(415) 555-0110", tag: "Kitchen" },
   { name: "Renee Park", role: "Operations manager · SFK", phone: "(415) 555-0120", tag: "Operations" },
 ];

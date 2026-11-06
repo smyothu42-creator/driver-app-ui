@@ -6,7 +6,7 @@ import { Card, cn, IconChip, SectionLabel, Toggle, TopBar } from "../components/
  * Oct 27 2026: Me → Notifications. The driver picks what pings them.
  *   Route changes, time changes and cancellations always notify (safety, UX skill §14), so they're shown locked.
  *   Request reminders can be more or less often, never off: dispatch needs an answer.
- *   Turning a type off only stops the banner; the message still lands in the Inbox.
+ *   Turning a type off only stops the banner; the message still lands in Chat.
  * ------------------------------------------------------------------ */
 const EVERY: NotifPrefs["reminderHours"][] = [1, 2, 4];
 
@@ -69,14 +69,14 @@ export function NotificationSettings() {
         <section>
           <SectionLabel>{t("Other")}</SectionLabel>
           <Card className="divide-y divide-border">
-            <Row icon={<MessageSquare />} title={t("Messages from dispatch")} sub={p.messages ? t("Banner and inbox") : t("Inbox only")}>
+            <Row icon={<MessageSquare />} title={t("Messages from dispatch")} sub={p.messages ? t("Banner and chat") : t("Chat only")}>
               <Toggle on={p.messages} label={t("Messages from dispatch")} onChange={(v) => a.setNotifPrefs({ messages: v })} />
             </Row>
             <Row icon={<Volume2 />} title={t("Sound & vibration")} sub={p.sound ? t("On") : t("Silent")}>
               <Toggle on={p.sound} label={t("Sound & vibration")} onChange={(v) => a.setNotifPrefs({ sound: v })} />
             </Row>
           </Card>
-          <p className="mt-2 px-1 text-2xs text-muted-foreground">{t("Turned-off notifications still show in your Inbox.")}</p>
+          <p className="mt-2 px-1 text-2xs text-muted-foreground">{t("Turned-off notifications still show in Chat.")}</p>
         </section>
       </div>
     </div>

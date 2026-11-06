@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Check, Headphones, Minimize2, Route as RouteIcon, Smartphone, UserRound } from "lucide-react";
+import { CalendarDays, Check, Headphones, MessageSquare, Minimize2, Route as RouteIcon, Smartphone, UserRound } from "lucide-react";
 import { AppProvider, runStops, useApp, useT, type Tab } from "./store";
 import { PhoneFrame } from "./components/PhoneFrame";
 import { cn, SfkMark } from "./components/ui";
@@ -28,6 +28,8 @@ import { DispatchDesk } from "./components/DispatchDesk";
 const TABS: { id: Tab; label: string; icon: typeof RouteIcon | typeof SfkMark }[] = [
   { id: "map", label: "Route", icon: RouteIcon },
   { id: "schedule", label: "Schedule", icon: CalendarDays },
+  // Nov 6 2026: chat with dispatch has its own tab (was an icon in Route's header and a row on Me).
+  { id: "chat", label: "Chat", icon: MessageSquare },
   // History moved out of the tab bar (Oct 15 2026). It goes in the Me / profile page when Profile is designed (Sprint 3).
   { id: "me", label: "Me", icon: UserRound },
 ];
@@ -38,8 +40,9 @@ function TabBar() {
   // #18: pending requests show as a count on the Schedule tab.
   // Requests to answer, plus dispatch assignments not opened yet (Oct 26 2026).
   const pending = laterFor("schedule") ? 0 : s.requests.filter((r) => r.status === "pending" || (r.unseen && r.status === "accepted")).length;
+  const unread = isOn("notifications") ? s.inbox.filter((m) => m.from === "dispatch" && !m.read).length : 0;
   return (
-    <nav aria-label="Main" className="grid grid-cols-3 border-t border-border bg-card px-1 pb-7 pt-1.5">
+    <nav aria-label="Main" className="grid grid-cols-4 border-t border-border bg-card px-1 pb-7 pt-1.5">
       {TABS.map(({ id, label, icon: I }) => {
         const on = s.tab === id;
         return (
@@ -49,6 +52,11 @@ function TabBar() {
               {id === "schedule" && pending > 0 && (
                 <span className="nums absolute -top-0.5 right-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-2xs font-bold text-white" aria-label={`${pending} pending`}>
                   {pending}
+                </span>
+              )}
+              {id === "chat" && unread > 0 && (
+                <span className="nums absolute -top-0.5 right-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-coral px-1 text-2xs font-bold text-white" aria-label={`${unread} unread`}>
+                  {unread}
                 </span>
               )}
             </span>
@@ -153,7 +161,7 @@ function Screens({ full }: { full: boolean }) {
       body = <AvailabilityScreen />;
       break;
     case "tabs":
-      body = { map: <RouteTab />, schedule: <ScheduleTab />, history: <History />, me: <Me /> }[s.tab];
+      body = { map: <RouteTab />, schedule: <ScheduleTab />, history: <History />, chat: <Inbox tab />, me: <Me /> }[s.tab];
       break;
   }
 
@@ -178,9 +186,11 @@ function Screens({ full }: { full: boolean }) {
   }
 
   const isTabs = top.name === "tabs";
+  // The Chat tab is the chat itself: it fills the screen and keeps its message box above the tab bar.
+  const chatTab = isTabs && s.tab === "chat" && !hidden;
   const statusTop =
     // Nov 4 2026: Sign in's yellow header runs up behind the status bar.
-    top.name === "signin" ? "yellow" : top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "schedule" || s.tab === "map") && !hidden ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : (isTabs && s.tab === "history") || top.name === "history" ? "teal" : "light";
+    top.name === "signin" ? "yellow" : top.name === "camera" || top.name === "scan" ? "black" : isTabs && (s.tab === "schedule" || s.tab === "map") && !hidden ? "tealSoft" : top.name === "stop" || top.name === "availability" || top.name === "requests" ? "tealSoft" : top.name === "request" || top.name === "inbox" || (isTabs && s.tab === "chat") || top.name === "package" ? "mint" : top.name === "navigate" ? "mint" : (isTabs && s.tab === "history") || top.name === "history" ? "teal" : "light";
 
   return (
     <PhoneFrame
@@ -190,18 +200,18 @@ function Screens({ full }: { full: boolean }) {
       // Nov 3 2026: the drive back to the kitchen ("k") isn't a stop, so it lands on Kitchen pickup (was a blank screen).
       backLink={top.name === "navigate" ? { label: "SFK Driver", onClick: () => a.jump(() => ({ stack: [{ name: "tabs" }, top.id === "k" ? { name: "kitchen" } : { name: "stop", id: top.id }], tab: "map", sheet: null })) } : undefined}
     >
-      <div className="relative flex h-full flex-col">
+      <div className="group/shell relative flex h-full flex-col">
         <OfflineBar />
-        <div key={key} onScroll={isTabs ? onScroll : undefined} className={cn("anim-screen relative flex-1", top.name === "navigate" ? "overflow-hidden" : "overflow-y-auto")}>
+        <div key={key} onScroll={isTabs ? onScroll : undefined} className={cn("anim-screen relative flex-1", top.name === "navigate" || top.name === "inbox" || chatTab ? "overflow-hidden" : "overflow-y-auto")}>
           {body}
           {/* Room under the last row so it can scroll clear of the tab bar, which sits over the content. */}
-          {isTabs && <div aria-hidden className={cn("h-[92px]", s.tab === "me" ? "bg-background" : "bg-white")} />}
+          {isTabs && !chatTab && <div aria-hidden className={cn("h-[92px]", s.tab === "me" ? "bg-background" : "bg-white")} />}
         </div>
         {isTabs && (
           // Nov 4 2026 (review: "lags on a quick scroll"): the tab bar sits over the content and slides away with a
           // transform, instead of collapsing its height (which re-laid-out the whole list on every frame). The tab
           // screens have no pinned buttons at the bottom, so nothing needs to follow it down.
-          <div className={cn("absolute inset-x-0 bottom-0 z-30 transition-transform duration-300 ease-out will-change-transform", barHidden && "translate-y-full")}>
+          <div className={cn("absolute inset-x-0 bottom-0 z-30 transition-transform duration-300 ease-out will-change-transform", barHidden && !chatTab && "translate-y-full", chatTab && "group-has-[textarea:focus]/shell:hidden")}>
             <TabBar />
           </div>
         )}

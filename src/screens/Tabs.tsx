@@ -1,4 +1,4 @@
-import { Bell, BellRing, CalendarOff, Camera, Car, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, Navigation, RadioTower, RotateCcw, ShieldAlert, Smartphone, History as HistoryIcon } from "lucide-react";
+import { BellRing, CalendarOff, Camera, Car, CheckCircle2, ChevronLeft, ChevronRight, ChevronUp, Clock, CircleHelp, Download, Eye, EyeOff, Headphones, Languages, LogOut, Navigation, RadioTower, RotateCcw, ShieldAlert, Smartphone, History as HistoryIcon } from "lucide-react";
 import { atKitchen, toKitchenNow, liveRoute, needsKitchenRun, useApp, nextStop, useRoute, useT, type LocationPerm, type NotifPrefs } from "../store";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DISPATCH, DRIVER, KITCHEN, PAST, ROUTE_DATE, ROUTE_ISO, SETTINGS, KITCHEN_READY, driveBetween, fmtTime, fmtWindow, legBetween, runOf, type Stop } from "../data/route";
@@ -77,7 +77,7 @@ function useDragRail(rail: React.RefObject<HTMLDivElement | null>, step: number,
  * Route tab (Oct 21 2026): no map, just today's route as a timeline (kitchen pickups and stops in order).
  * Same mint header + white panel as Schedule. MapTab below is kept for when the map comes back.
  */
-/** Route tab header: title and date on the left, the Requests / Inbox pill on the right. */
+/** Route tab header: title and date on the left, the Requests button on the right. */
 function RouteTitle() {
   const t = useT();
   return (
@@ -92,7 +92,7 @@ function RouteTitle() {
 }
 
 /**
- * Nov 4 2026 (review): once the header has scrolled away, a compact copy (title, date, Requests / Inbox) stays pinned
+ * Nov 4 2026 (review): once the header has scrolled away, a compact copy (title, date, Requests) stays pinned
  * at the top. Its duty card slides away while the driver scrolls down the list and slides back as soon as they scroll
  * up. Kept smooth on fast scrolls: the scroll is read once per frame, state only changes when something flips (so the
  * route list never re-renders while scrolling), and both moves are transform + opacity only (no layout per frame).
@@ -154,7 +154,7 @@ export function RouteTab() {
     <div ref={root} className="flex min-h-full flex-col overflow-x-clip bg-[#CFE8E8]">
       <PinnedRouteHeader anchor={root} />
       <div className="bg-[#CFE8E8] px-4 pb-8 pt-1 text-teal-deep">
-        {/* Title and date on the left; the Requests / Inbox pill centred on both, so it sits a little lower. */}
+        {/* Title and date on the left; the Requests button centred on both, so it sits a little lower. */}
         <RouteTitle />
         {/* Oct 26 2026: Home is gone; its duty card (status, progress, next-step button) opens the Route tab. */}
         <div className="mt-3">
@@ -496,7 +496,6 @@ function ResultTag({ ok, children }: { ok: boolean; children: ReactNode }) {
 export function Me() {
   const { s, a } = useApp();
   const t = useT();
-  const unread = s.inbox.filter((m) => m.from === "dispatch" && !m.read).length;
   const changed = Object.keys(s.vehicleFor).length;
   return (
     <div>
@@ -591,7 +590,6 @@ export function Me() {
         <section>
           <SectionLabel>{t("Support")}</SectionLabel>
           <Card className="divide-y divide-border">
-            <Row icon={<Bell />} title={t("Inbox")} sub={unread ? `${unread} ${t("unread from dispatch")}` : t("All read")} onClick={() => a.push({ name: "inbox" })} />
             <Row icon={<Headphones />} title={t("Call dispatch")} sub={`${DISPATCH.name} · ${DISPATCH.phone}`} onClick={() => a.toast(`${t("Calling")} ${DISPATCH.name}…`)} />
             <Row icon={<CircleHelp />} title={t("Driver handbook")} sub={t("Food safety, hot/cold rules, escalation")} />
             {/* #24: the store auto-updates the app; a version SFK marks as required blocks the app (UpdateGate). */}

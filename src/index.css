@@ -16,6 +16,42 @@
 }
 
 @layer utilities {
+  /* Nov 6 2026: Material 3 type scale for the full-screen dispatch board (size / line height / tracking). Review: "text
+     and spacing are still too small", so the whole scale runs at a font scale of 1.2, the way Material handles a larger
+     text setting. Change --m3-scale to resize everything together. */
+  .m3-desk { --m3-scale: 1.2; }
+  .m3-headline-l { font-size: calc(32px * var(--m3-scale)); line-height: calc(40px * var(--m3-scale)); letter-spacing: 0; }
+  .m3-headline-m { font-size: calc(28px * var(--m3-scale)); line-height: calc(36px * var(--m3-scale)); letter-spacing: 0; }
+  .m3-headline-s { font-size: calc(24px * var(--m3-scale)); line-height: calc(32px * var(--m3-scale)); letter-spacing: 0; }
+  .m3-title-l { font-size: calc(22px * var(--m3-scale)); line-height: calc(28px * var(--m3-scale)); letter-spacing: 0; font-weight: 400; }
+  .m3-title-m { font-size: calc(16px * var(--m3-scale)); line-height: calc(24px * var(--m3-scale)); letter-spacing: 0.15px; font-weight: 500; }
+  .m3-body-l { font-size: calc(16px * var(--m3-scale)); line-height: calc(24px * var(--m3-scale)); letter-spacing: 0.5px; }
+  .m3-body-m { font-size: calc(14px * var(--m3-scale)); line-height: calc(20px * var(--m3-scale)); letter-spacing: 0.25px; }
+  .m3-label-l { font-size: calc(14px * var(--m3-scale)); line-height: calc(20px * var(--m3-scale)); letter-spacing: 0.1px; font-weight: 500; }
+  .m3-label-m { font-size: calc(12px * var(--m3-scale)); line-height: calc(16px * var(--m3-scale)); letter-spacing: 0.5px; font-weight: 500; }
+  .m3-label-s { font-size: calc(11px * var(--m3-scale)); line-height: calc(16px * var(--m3-scale)); letter-spacing: 0.5px; font-weight: 500; }
+  /* The side-panel sections shown inside the board keep their own classes, so they follow the scale here only. */
+  .m3-desk .text-sm, .m3-desk .text-\[15px\] { font-size: calc(16px * var(--m3-scale)); line-height: calc(24px * var(--m3-scale)); letter-spacing: 0.5px; }
+  .m3-desk .text-\[13px\], .m3-desk .text-xs, .m3-desk .text-2xs { font-size: calc(14px * var(--m3-scale)); line-height: calc(20px * var(--m3-scale)); letter-spacing: 0.25px; }
+  /* One dropdown look across the board: the browser's arrow sat hard against the border and clipped. */
+  .m3-desk select {
+    appearance: none;
+    padding-right: 36px;
+    text-overflow: ellipsis;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%233F4948' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+  .m3-desk .h-9 { height: 44px; }
+  .m3-desk section button { white-space: nowrap; }
+  .m3-desk section .h-8 { height: 40px; }
+  /* In the driver panel, a customer name wraps rather than being cut off by the chips beside it. */
+  .m3-desk aside section .truncate { white-space: normal; }
+  .m3-desk .divide-y > .py-3 { padding-top: 16px; padding-bottom: 16px; }
+  .m3-desk .divide-y > .min-h-11 { min-height: 60px; gap: 12px; }
+  .m3-desk .divide-y > .min-h-11 > .w-9 { width: 56px; }
+  .m3-desk .divide-y > .min-h-11 input[type="checkbox"] { width: 20px; height: 20px; }
+  .m3-desk .divide-y > .min-h-11 select { height: 44px; }
   .nums { font-variant-numeric: tabular-nums; }
   .text-overline { @apply text-2xs font-semibold text-muted-foreground; }
   .hero-yellow { background: linear-gradient(135deg, #F8EC58 0%, #F5E516 55%, #EFD90C 100%); }

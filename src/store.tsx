@@ -4,7 +4,7 @@ import { translate, type Lang } from "./i18n";
 import { isOn } from "./data/sprints";
 import { coversWindow, dayOf, type Availability } from "./data/availability";
 
-export type Tab = "map" | "schedule" | "history" | "me"; // Oct 26 2026: no Home tab; Route ("map") is the first screen
+export type Tab = "map" | "schedule" | "chat" | "history" | "me"; // Oct 26 2026: no Home tab; Route ("map") is the first screen
 
 export type Screen =
   | { name: "signin" }
@@ -19,7 +19,7 @@ export type Screen =
   | { name: "problem"; id: string; reusables?: string[] } // #21 step-by-step problem flow; `reusables` = what's short after a count (#53)
   | { name: "request"; id: string } // #18 one delivery request
   | { name: "requests" } // #18 only the requests waiting for an answer (Home's request button)
-  | { name: "inbox" } // #6 messages to and from dispatch
+  | { name: "inbox" } // #6 the chat with dispatch, opened over a stop, a request or the schedule
   | { name: "vehicle" } // #64 vehicle profile
   | { name: "notifSettings" } // Oct 27 2026: Me → Notifications
   | { name: "history" } // past deliveries, opened from Me (left the tab bar Oct 15 2026)
@@ -116,7 +116,12 @@ export interface Msg {
   goto?: "schedule" | "availability" | "vehicle";
   priority: "high" | "medium" | "low";
   read?: boolean;
+  /** Who at dispatch wrote this. Left out means DISPATCH. A driver's messages have none: they go to all dispatch staff. */
+  by?: string;
 }
+
+/** Which dispatch staff member wrote a message from dispatch. */
+export const sentBy = (m: Pick<Msg, "by">) => m.by ?? DISPATCH.name;
 
 export interface Push {
   id: number;
@@ -254,7 +259,8 @@ const initial = (): State => ({
   inbox: [
     // Newest first, like every message added later.
     { id: "m3", at: 10 * 60 + 5, from: "dispatch", kind: "request", title: "New assignment · Bayview Health Center", body: "Fri, Oct 9 · ~12:30 PM. Dispatch added it to your schedule.", requestId: "r24", priority: "high" },
-    { id: "m2", at: 9 * 60 + 40, from: "dispatch", kind: "reminder", title: "3 delivery requests need your answer", body: "Brightline Health is in less than 48 h.", requestId: "r2", priority: "high" },
+    { id: "m2", at: 9 * 60 + 40, from: "dispatch", kind: "reminder", title: "3 delivery requests need your answer", body: "Brightline Health is in less than 48 h.", requestId: "r2", priority: "high", by: "Sam Okafor" },
+    { id: "m1", at: 8 * 60 + 50, from: "dispatch", kind: "info", title: "Morning! The kitchen is on time today.", priority: "low", read: true },
   ],
   requests: REQUESTS,
   openHours: OPEN_HOURS,
@@ -542,6 +548,8 @@ function useAppState() {
           if (!open) return { push: null };
           // A push about requests in general lands on the Schedule tab; anything else opens its screen over the tabs.
           if (open.name === "tabs") return { push: null, stack: [{ name: "tabs" }], tab: "schedule", sheet: null };
+          // A message opens the Chat tab, which is the chat with dispatch.
+          if (open.name === "inbox") return { push: null, stack: [{ name: "tabs" }], tab: "chat", sheet: null };
           return { push: null, stack: [{ name: "tabs" }, open], sheet: null };
         }),
       markInboxRead: () => patch((p) => (p.inbox.some((m) => !m.read) ? { inbox: p.inbox.map((m) => ({ ...m, read: true })) } : {})),
@@ -554,6 +562,17 @@ function useAppState() {
         patch({ vehicle });
         toast("Vehicle saved");
       },
+      /** Nov 6 2026: dispatch corrects the driver's vehicle; the driver gets a push, same as storage details. */
+      setDriverVehicle: (vehicle: VehicleProfile) =>
+        patch((p) => {
+          const title = "Vehicle details updated";
+          const body = "Set by dispatch · see Vehicle";
+          return {
+            vehicle,
+            inbox: [{ id: `m${++msgSeq}`, at: p.clock, from: "dispatch", kind: "info", title, body, goto: "vehicle", priority: "low" }, ...p.inbox],
+            push: { id: pushSeq++, title, body, tone: "medium", open: { name: "vehicle" } },
+          };
+        }),
       /** #64: dispatch edits storage details; the driver gets a push and reads them under Me → Vehicle. */
       setStorage: (storage: string) =>
         patch((p) => {
